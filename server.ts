@@ -1,3 +1,7 @@
+/**
+ * IndSpectora — Inspection & Project Operations Server
+ * @author Aoraki CreaLabs
+ */
 import 'dotenv/config';
 import crypto from 'node:crypto';
 import fs from 'node:fs';

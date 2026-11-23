@@ -1,3 +1,7 @@
+/**
+ * IndSpectora — Main Application Shell
+ * @author Aoraki CreaLabs
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell,
@@ -591,6 +595,14 @@ export default function App() {
             <LogOut className="w-3.5 h-3.5 shrink-0" />
             <span className={sidebarCollapsed ? 'lg:hidden' : ''}>Sign Out</span>
           </button>
+
+          <div
+            className={`pt-0.5 text-[10px] tracking-wide text-[#64748B] dark:text-[#94A3B8] opacity-35 hover:opacity-85 transition-opacity duration-200 select-none ${
+              sidebarCollapsed ? 'lg:hidden' : ''
+            }`}
+          >
+            Created by Aoraki CreaLabs
+          </div>
         </div>
       </aside>
 
