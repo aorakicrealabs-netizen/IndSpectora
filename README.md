@@ -1,8 +1,8 @@
-# OpsLedger — Inspection, Asset Governance & Project Operations
+# IndSpectora — Inspection, Asset Governance & Project Operations
 
-**OpsLedger** is a self-hosted operational platform unifying **Asset & Facility Management**, **Visual & Parameterized Field Inspections**, **Sequential Multi-Approver Workflows**, and **WBS Project / Gantt Tracking** on top of a lightweight, persistent local stack.
+**IndSpectora** is a self-hosted operational platform unifying **Asset & Facility Management**, **Visual & Parameterized Field Inspections**, **Sequential Multi-Approver Workflows**, and **WBS Project / Gantt Tracking** on top of a lightweight, persistent local stack.
 
-Designed for both **plant & facility operations teams** and **engineering teams** deploying on localhost or private infrastructure, OpsLedger replaces scattered spreadsheets, disconnected photo folders, and manual sign-off loops with an auditable single-source system synchronized in real time over WebSockets.
+Designed for both **plant & facility operations teams** and **engineering teams** deploying on localhost or private infrastructure, IndSpectora replaces scattered spreadsheets, disconnected photo folders, and manual sign-off loops with an auditable single-source system synchronized in real time over WebSockets.
 
 > **Quick Links**: [Localhost & AI-Agent Deployment Runbook (`DEPLOY.md`)](./DEPLOY.md) · [Frequently Asked Questions (`FAQ.md`)](./FAQ.md)
 
@@ -47,7 +47,7 @@ Designed for both **plant & facility operations teams** and **engineering teams*
 
 ### 1. Asset & Facility Library
 - **Facility / Zone Areas**: Organize plant buildings, production lines, or utility zones with unique zone codes (e.g., `DRY-01`, `UTL-02`) and link Assets directly to their physical zones.
-- **CSV Template & Bulk Import**: Download a pre-formatted CSV template (`opsledger-asset-import-template.csv`) and bulk-import or update dozens of Assets—including embedded **Custom Parameters**—with instant pre-import row validation.
+- **CSV Template & Bulk Import**: Download a pre-formatted CSV template (`indspectora-asset-import-template.csv`) and bulk-import or update dozens of Assets—including embedded **Custom Parameters**—with instant pre-import row validation.
 - **Configurable Custom Inspection Parameters**: Define unlimited inspection metrics per Asset using three typed controls:
   - **Number with Unit** (e.g., `Powder Accumulation` in `kg`, `Delta P` in `kPa`, `Temperature` in `°C`)
   - **Yes / No Toggle** (e.g., `Chamber Seal Intact`)
@@ -72,7 +72,7 @@ Designed for both **plant & facility operations teams** and **engineering teams*
 ### 4. Projects & Active Project (WBS, Gantt & Table Views)
 - **WBS Hierarchy**: Structure shutdowns, preventive maintenance turnarounds, and corrective engineering actions with hierarchical Work Breakdown Structure (`WBS`) codes (`1`, `1.1`, `1.1.1`).
 - **Dual Schedule Views**: Switch seamlessly between an interactive **Gantt Timeline** and a high-density **Table View** featuring **Schedule Start–Stop** columns, inline status/progress updates, and quick assignee switching.
-- **Registered User Assignees**: Assign every activity directly to a registered OpsLedger team member (`assigneeId` + synchronized display name).
+- **Registered User Assignees**: Assign every activity directly to a registered IndSpectora team member (`assigneeId` + synchronized display name).
 - **Automatic Change History & Timestamped Comments**: Updating progress or status automatically records immutable audit entries (e.g., `Work Progress 0% → 50% on dd/mmm/yyyy hh:mm`), paired with a timestamped **Activity Comments** feed and Finish-to-Start / Start-to-Start dependency blocker tracking.
 
 ### 5. Composable Multi-Role Access Control (RBAC)
@@ -128,20 +128,20 @@ Users can hold **multiple roles simultaneously** (e.g., `Approver + User` or `Ad
                                                                                    │
                                                                     ┌──────────────▼───────────────┐
                                                                     │ Local Persistent ./data/     │
-                                                                    │  • data/opsledger.db (SQLite)│
+                                                                    │  • data/indspectora.db (SQLite)│
                                                                     │  • data/uploads/ (Photos)    │
                                                                     └──────────────────────────────┘
 ```
 
 - **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide Icons, Motion
 - **Backend**: Node.js (`v22.18+` native TS execution or `tsx`), Express, `ws` WebSocket server, Multer
-- **Database**: `better-sqlite3` (`./data/opsledger.db`, WAL-friendly local relational persistence with foreign keys)
+- **Database**: `better-sqlite3` (`./data/indspectora.db`, WAL-friendly local relational persistence with foreign keys)
 
 ---
 
 ## Quick Start (Localhost)
 
-OpsLedger starts cleanly with **zero mock operational data** and automatically initializes `./data/opsledger.db` on first boot.
+IndSpectora starts cleanly with **zero mock operational data** and automatically initializes `./data/indspectora.db` on first boot.
 
 ### Option 1: Direct Node.js (`v22.18+` Recommended)
 
@@ -155,7 +155,7 @@ npm install
 # 3. Verify TypeScript & frontend build
 npm run lint && npm run build
 
-# 4. Start OpsLedger on http://localhost:3000
+# 4. Start IndSpectora on http://localhost:3000
 npm run dev
 ```
 
@@ -177,15 +177,15 @@ docker compose up --build -d
 
 ## First-Time Login & Usage Guide
 
-When OpsLedger boots against an empty database, two starter accounts are created automatically:
+When IndSpectora boots against an empty database, two starter accounts are created automatically:
 
 | Starter Role | Email | Default Password | Capabilities |
 | :--- | :--- | :--- | :--- |
-| **Admin + Approver** | `admin@opsledger.local` | `admin123` | Full User CRUD, Asset/Zone setup, Approvals, Projects, Override edits |
-| **Standard User** | `inspector@opsledger.local` | `inspect123` | Start/submit inspections, edit own Draft/Sent-Back reports, assigned tasks |
+| **Admin + Approver** | `admin@indspectora.local` | `admin123` | Full User CRUD, Asset/Zone setup, Approvals, Projects, Override edits |
+| **Standard User** | `inspector@indspectora.local` | `inspect123` | Start/submit inspections, edit own Draft/Sent-Back reports, assigned tasks |
 
 ### Recommended First 10 Minutes
-1. **Sign In & Rotate Starter Passwords**: Open `http://localhost:3000`, sign in as `admin@opsledger.local`, go to **User Management**, immediately click **Reset Password** on both starter accounts, and create named team accounts with appropriate multi-role assignments.
+1. **Sign In & Rotate Starter Passwords**: Open `http://localhost:3000`, sign in as `admin@indspectora.local`, go to **User Management**, immediately click **Reset Password** on both starter accounts, and create named team accounts with appropriate multi-role assignments.
 2. **Set Up Zones & Import Assets**: Open **Asset Library → Facility / Zone Areas** to add your physical zones, then click **Download CSV Template** and upload your equipment inventory via **Import CSV**.
 3. **Follow Built-In Tours**: Every workspace launches a brief interactive walkthrough on your first visit. Visit **How to Use** anytime to replay tours, check the Role Capability Matrix, or search the in-app FAQ.
 
@@ -194,4 +194,4 @@ When OpsLedger boots against an empty database, two starter accounts are created
 ## Further Documentation
 
 - [`DEPLOY.md`](./DEPLOY.md) — Full **AI-Agent Localhost Deployment & First-Setup Runbook** (Node.js + Docker Compose, automated verification script, and explicit User Intervention Gates).
-- [`FAQ.md`](./FAQ.md) — Complete **OpsLedger Usage FAQ** covering Multi-Role RBAC, CSV Parameter Syntax (`Label|type|unit|required`), Sequential Approvals, Digital Footprints, WBS/Gantt vs. Table View, and SQLite backup/reset procedures.
+- [`FAQ.md`](./FAQ.md) — Complete **IndSpectora Usage FAQ** covering Multi-Role RBAC, CSV Parameter Syntax (`Label|type|unit|required`), Sequential Approvals, Digital Footprints, WBS/Gantt vs. Table View, and SQLite backup/reset procedures.

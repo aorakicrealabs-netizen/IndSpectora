@@ -48,27 +48,112 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 app.use(express.json({ limit: '15mb' }));
-app.use('/uploads', express.static(UPLOADS_DIR));
+app.use(
+  '/uploads',
+  express.static(UPLOADS_DIR, {
+    setHeaders: (res, filePath) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (filePath.toLowerCase().endsWith('.svg')) {
+        res.setHeader(
+          'Content-Security-Policy',
+          "default-src 'none'; style-src 'unsafe-inline'"
+        );
+      }
+    },
+  })
+);
+
+const ALLOWED_UPLOAD_EXTS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.svg',
+  '.bmp',
+  '.avif',
+  '.heic',
+  '.heif',
+  '.tif',
+  '.tiff',
+]);
+
+function resolveUploadExtension(file: Express.Multer.File): string {
+  const rawExt = path.extname(file.originalname || '').toLowerCase().replace(/[^a-z0-9.]/g, '');
+  if (ALLOWED_UPLOAD_EXTS.has(rawExt)) {
+    return rawExt;
+  }
+  const mime = (file.mimetype || '').toLowerCase();
+  if (mime === 'image/png') return '.png';
+  if (mime === 'image/webp') return '.webp';
+  if (mime === 'image/svg+xml') return '.svg';
+  if (mime === 'image/gif') return '.gif';
+  if (mime === 'image/bmp') return '.bmp';
+  if (mime === 'image/avif') return '.avif';
+  if (mime === 'image/heic') return '.heic';
+  if (mime === 'image/heif') return '.heif';
+  return '.jpg';
+}
+
+function sanitizeUploadedSvg(file: Express.Multer.File | undefined): boolean {
+  if (!file) return true;
+  const ext = path.extname(file.filename).toLowerCase();
+  const mime = (file.mimetype || '').toLowerCase();
+  if (ext !== '.svg' && mime !== 'image/svg+xml') {
+    return true;
+  }
+  try {
+    const raw = fs.readFileSync(file.path, 'utf8');
+    if (!/<svg[\s>]/i.test(raw)) {
+      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      return false;
+    }
+    const cleaned = raw
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/<script[^>]*\/>/gi, '')
+      .replace(/<foreignObject[\s\S]*?>[\s\S]*?<\/foreignObject>/gi, '')
+      .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/\s(xlink:href|href)\s*=\s*(["'])\s*(?:javascript|vbscript):[\s\S]*?\2/gi, '');
+    fs.writeFileSync(file.path, cleaned, 'utf8');
+    return true;
+  } catch {
+    if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+    return false;
+  }
+}
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     cb(null, UPLOADS_DIR);
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    const safeExt = ext.replace(/[^a-zA-Z0-9.]/g, '').slice(0, 10) || '.jpg';
+    const safeExt = resolveUploadExtension(file);
     cb(null, `insp_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${safeExt}`);
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const mime = (file.mimetype || '').toLowerCase();
+    const isImageMime = mime.startsWith('image/');
+    const isFallbackMimeWithValidExt =
+      (!mime ||
+        mime === 'application/octet-stream' ||
+        mime === 'text/xml' ||
+        mime === 'application/xml') &&
+      ALLOWED_UPLOAD_EXTS.has(ext);
+    if (isImageMime || isFallbackMimeWithValidExt) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are permitted for inspection photo evidence.'));
+      cb(
+        new Error(
+          `Unsupported file "${file.originalname}". Permitted formats: PNG, JPG, WebP, SVG, GIF, and HEIC.`
+        )
+      );
     }
   },
 });
@@ -951,6 +1036,10 @@ app.post(
     }
     if (!req.file) {
       res.status(400).json({ error: 'No valid image or drawing file uploaded.' });
+      return;
+    }
+    if (!sanitizeUploadedSvg(req.file)) {
+      res.status(400).json({ error: 'Uploaded SVG file was malformed or invalid.' });
       return;
     }
 
@@ -2385,6 +2474,12 @@ app.post(
       res.status(400).json({ error: 'No valid image files received.' });
       return;
     }
+    for (const file of files) {
+      if (!sanitizeUploadedSvg(file)) {
+        res.status(400).json({ error: `Uploaded SVG "${file.originalname}" is invalid.` });
+        return;
+      }
+    }
 
     const captionInput = typeof req.body.caption === 'string' ? req.body.caption.trim() : '';
     const pinIdInput =
@@ -3371,6 +3466,22 @@ app.delete('/api/blockers/:id', requireAuth, requireProjectManager, (req: Authen
 
 // Error handler for multer / unexpected route errors
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).json({
+        error: 'Image file exceeds the 25 MB upload limit. Please use a smaller or compressed image.',
+      });
+      return;
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      res.status(400).json({
+        error: 'Too many files uploaded at once (maximum 8 images per batch).',
+      });
+      return;
+    }
+    res.status(400).json({ error: err.message || 'File upload rejected.' });
+    return;
+  }
   res.status(400).json({ error: err.message || 'Unexpected server error.' });
 });
 
@@ -3392,7 +3503,7 @@ async function startServer(): Promise<void> {
   }
 
   server.listen(port, '0.0.0.0', () => {
-    console.log(`OpsLedger server listening on http://0.0.0.0:${port}`);
+    console.log(`IndSpectora server listening on http://0.0.0.0:${port}`);
   });
 }
 

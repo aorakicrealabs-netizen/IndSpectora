@@ -1,9 +1,9 @@
 services:
-  opsledger:
+  indspectora:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: opsledger-app
+    container_name: indspectora-app
     ports:
       - "${PORT:-3000}:3000"
     environment:
@@ -11,6 +11,6 @@ services:
       PORT: 3000
       APP_URL: "${APP_URL:-http://localhost:3000}"
     volumes:
-      # Persists SQLite database (data/opsledger.db) and uploaded photos/drawings (data/uploads/)
+      # Persists SQLite database (data/indspectora.db) and uploaded photos/drawings (data/uploads/)
       - ./data:/app/data
     restart: unless-stopped

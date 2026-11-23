@@ -184,7 +184,7 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
         title: 'Download CSV Template & Bulk Import',
         targetArea: 'Top Toolbar Buttons',
         description:
-          'Click Download CSV Template to get a ready-to-fill spreadsheet matching OpsLedger columns, then use Import CSV to preview and import dozens of assets in one batch.',
+          'Click Download CSV Template to get a ready-to-fill spreadsheet matching IndSpectora columns, then use Import CSV to preview and import dozens of assets in one batch.',
       },
       {
         title: 'Custom Inspection Parameters & Visual Drawings',
@@ -224,7 +224,7 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
         title: 'Registered User Assignment & WBS Hierarchy',
         targetArea: 'New Activity Modal & Table',
         description:
-          'Pick Assignees directly from registered OpsLedger users. Use parent phases and WBS numbering to keep turnaround tasks structured.',
+          'Pick Assignees directly from registered IndSpectora users. Use parent phases and WBS numbering to keep turnaround tasks structured.',
       },
       {
         title: 'Activity Drawer: Progress History & Comments',
@@ -240,7 +240,7 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
     title: 'User & Role Management',
     subtitle: 'Manage local accounts, assign multiple roles per user, and reset passwords securely.',
     summary:
-      'Administrators manage all OpsLedger accounts here. Each user can hold one or more roles simultaneously (Admin, Approver, User) to match real plant responsibilities without duplicate accounts.',
+      'Administrators manage all IndSpectora accounts here. Each user can hold one or more roles simultaneously (Admin, Approver, User) to match real plant responsibilities without duplicate accounts.',
     rolesNote: 'Restricted to Admin users only.',
     checklist: [
       'Assign one or more roles (Admin, Approver, User) via multi-role checkboxes.',
@@ -273,7 +273,7 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
     title: 'How to Use & Onboarding Tours',
     subtitle: 'Role permissions reference, per-page walkthroughs, and interactive tour replay controls.',
     summary:
-      'Reference this guide anytime you need a refresher on OpsLedger workflows, multi-role permissions, or want to relaunch the interactive page tour on any module.',
+      'Reference this guide anytime you need a refresher on IndSpectora workflows, multi-role permissions, or want to relaunch the interactive page tour on any module.',
     rolesNote: 'Accessible to all authenticated users at any time.',
     checklist: [
       'Review the Role Capability Matrix to verify what Admin, Approver, and User roles can do.',
@@ -291,10 +291,10 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
         title: 'Reset All First-Time Tours',
         targetArea: 'Top Action Button',
         description:
-          'Clears your completed-tour history so OpsLedger automatically walks you through each workspace the next time you visit it.',
+          'Clears your completed-tour history so IndSpectora automatically walks you through each workspace the next time you visit it.',
       },
       {
-        title: 'Searchable OpsLedger FAQ',
+        title: 'Searchable IndSpectora FAQ',
         targetArea: 'Bottom FAQ Section',
         description:
           'Filter frequently asked questions by category or keyword across Roles, Asset CSV Imports, Sequential Approvals, WBS Codes, and Localhost Storage.',
@@ -351,7 +351,7 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
     category: 'access',
     question: 'What are the differences between Admin, Approver, and User roles?',
     answer:
-      'OpsLedger uses three composable roles so access matches real plant responsibilities. A single user can hold more than one role at the same time (for example, Approver + User, or Admin + Approver).',
+      'IndSpectora uses three composable roles so access matches real plant responsibilities. A single user can hold more than one role at the same time (for example, Approver + User, or Admin + Approver).',
     steps: [
       'User (Standard Executor): Can start and submit inspection reports, edit their own Draft or Sent-Back reports, post comments, and update progress/comments on Project Activities assigned to them.',
       'Approver: Has all User capabilities plus authority to create/edit Facility Zones, Asset Library items, CSV imports, and Projects/WBS Activities—and appears in the 1–6 sequential Approver picker to Approve or Send Back inspections.',
@@ -381,9 +381,9 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
     category: 'access',
     question: 'What are the default first-time login accounts, and should we change them?',
     answer:
-      'When OpsLedger starts against an empty SQLite database, it seeds two starter accounts only: an Admin+Approver account (admin@opsledger.local / admin123) and a Standard User account (inspector@opsledger.local / inspect123). No sample operational records are seeded.',
+      'When IndSpectora starts against an empty SQLite database, it seeds two starter accounts only: an Admin+Approver account (admin@indspectora.local / admin123) and a Standard User account (inspector@indspectora.local / inspect123). No sample operational records are seeded.',
     steps: [
-      'Log in as admin@opsledger.local right after first deployment.',
+      'Log in as admin@indspectora.local right after first deployment.',
       'Open User Management, reset both starter passwords immediately, and create named accounts for your plant operators, supervisors, and reviewers.',
     ],
     appliesTo: 'Admin',
@@ -419,7 +419,7 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
     category: 'assets',
     question: 'How do I format Custom Inspection Parameters when bulk-importing Assets via CSV?',
     answer:
-      'Click Download CSV Template in the Asset Library to download opsledger-asset-import-template.csv with valid headers and two working examples. Existing Asset Codes are updated on re-import, while new codes are inserted automatically.',
+      'Click Download CSV Template in the Asset Library to download indspectora-asset-import-template.csv with valid headers and two working examples. Existing Asset Codes are updated on re-import, while new codes are inserted automatically.',
     steps: [
       'Keep columns: Asset Code, Category, Asset Title, Facility Area Code, Description, Inspection Criteria, Criticality (low/medium/high), Require Photo (yes/no), Active (yes/no), Custom Parameters.',
       'Format multiple custom parameters inside column 10 separated by semicolons (;), using pipes (|) inside each parameter: Label|type|unit|required.',
@@ -550,7 +550,7 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
     category: 'projects',
     question: 'How do Gantt View, Table View, Activity History, and Registered Assignees work?',
     answer:
-      'Inside Active Project, toggle between visual Gantt Timeline bars and a compact Table View displaying Schedule Start–Stop dates, inline progress updates, and quick assignee selectors. Assignees are picked directly from registered OpsLedger users.',
+      'Inside Active Project, toggle between visual Gantt Timeline bars and a compact Table View displaying Schedule Start–Stop dates, inline progress updates, and quick assignee selectors. Assignees are picked directly from registered IndSpectora users.',
     steps: [
       'Click any activity bar or table row to open the Activity Inspector Drawer.',
       'Update progress % or status—every save automatically appends a timestamped history entry (e.g., Work Progress 0% → 50% on dd/mmm/yyyy hh:mm).',
@@ -563,12 +563,12 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
   {
     id: 'faq-data-persistence-localhost',
     category: 'system',
-    question: 'Where are OpsLedger records, photos, and asset drawings stored on localhost?',
+    question: 'Where are IndSpectora records, photos, and asset drawings stored on localhost?',
     answer:
-      'Everything persists locally on disk inside the data directory: structured relational data in data/opsledger.db (SQLite) and uploaded inspection photos or asset drawings inside data/uploads/. When running via Docker Compose, ./data is mounted as a persistent host volume so restarts never lose data.',
+      'Everything persists locally on disk inside the data directory: structured relational data in data/indspectora.db (SQLite) and uploaded inspection photos or asset drawings inside data/uploads/. When running via Docker Compose, ./data is mounted as a persistent host volume so restarts never lose data.',
     steps: [
       'Back up anytime by stopping the server briefly and copying the entire data/ folder.',
-      'To start completely fresh on localhost, stop the server, remove data/opsledger.db and data/uploads/*, and restart—only the two starter user accounts will be re-seeded.',
+      'To start completely fresh on localhost, stop the server, remove data/indspectora.db and data/uploads/*, and restart—only the two starter user accounts will be re-seeded.',
     ],
     appliesTo: 'Admin · DevOps',
     keywords: ['sqlite', 'database', 'backup', 'uploads', 'storage', 'docker', 'volume', 'reset'],
@@ -578,7 +578,7 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
     category: 'system',
     question: 'How do Light/Dark Mode and first-time interactive Page Tours work?',
     answer:
-      'Use the Sun/Moon toggle in the top header to switch between Light and Dark Mode (saved per browser). When a user signs in and visits a workspace for the first time, OpsLedger automatically launches a short interactive tour tailored to that page.',
+      'Use the Sun/Moon toggle in the top header to switch between Light and Dark Mode (saved per browser). When a user signs in and visits a workspace for the first time, IndSpectora automatically launches a short interactive tour tailored to that page.',
     steps: [
       'Completion is tracked per user and per page in the database so tours do not repeat unexpectedly.',
       'Open How to Use at any time to click Launch Tour on an individual module or Reset All First-Time Tours to replay every onboarding prompt.',

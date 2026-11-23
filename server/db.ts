@@ -42,9 +42,19 @@ import type {
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 export const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
-const DB_PATH = path.join(DATA_DIR, 'opsledger.db');
+const LEGACY_DB_PATH = path.join(DATA_DIR, 'opsledger.db');
+const DB_PATH = path.join(DATA_DIR, 'indspectora.db');
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
+  fs.renameSync(LEGACY_DB_PATH, DB_PATH);
+  for (const suffix of ['-wal', '-shm']) {
+    if (fs.existsSync(`${LEGACY_DB_PATH}${suffix}`)) {
+      fs.renameSync(`${LEGACY_DB_PATH}${suffix}`, `${DB_PATH}${suffix}`);
+    }
+  }
+}
 
 export const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -576,6 +586,12 @@ export function initSchema(): void {
     migrate();
     db.pragma('foreign_keys = ON');
   }
+  if (!db.prepare('SELECT id FROM users WHERE email = ?').get('admin@indspectora.local')) {
+    db.prepare('UPDATE users SET email = ? WHERE email = ?').run('admin@indspectora.local', 'admin@opsledger.local');
+  }
+  if (!db.prepare('SELECT id FROM users WHERE email = ?').get('inspector@indspectora.local')) {
+    db.prepare('UPDATE users SET email = ? WHERE email = ?').run('inspector@indspectora.local', 'inspector@opsledger.local');
+  }
 }
 
 export function seedDatabaseIfEmpty(): void {
@@ -592,7 +608,7 @@ export function seedDatabaseIfEmpty(): void {
   insertUser.run(
     adminId,
     'Alex Mercer',
-    'admin@opsledger.local',
+    'admin@indspectora.local',
     hashPassword('admin123'),
     'admin',
     JSON.stringify(['admin', 'approver']),
@@ -602,7 +618,7 @@ export function seedDatabaseIfEmpty(): void {
   insertUser.run(
     inspectorId,
     'Jordan Vance',
-    'inspector@opsledger.local',
+    'inspector@indspectora.local',
     hashPassword('inspect123'),
     'user',
     JSON.stringify(['user']),

@@ -32,6 +32,11 @@ import {
   formatShortDate,
   formatTaskStatusLabel,
 } from '../utils/export.ts';
+import {
+  ACCEPTED_IMAGE_ACCEPT,
+  parseApiResponse,
+  prepareImageForUpload,
+} from '../utils/imageUpload.ts';
 
 type AuthorModalProps = {
   mode: 'author';
@@ -121,6 +126,7 @@ export function AssetVisualModal(props: AssetVisualModalProps) {
   const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
   const [placeMode, setPlaceMode] = useState(false);
   const [uploadingDrawing, setUploadingDrawing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [savingPin, setSavingPin] = useState(false);
   const [zoomPercent, setZoomPercent] = useState<number>(100);
   const [dropActive, setDropActive] = useState(false);
@@ -324,28 +330,37 @@ export function AssetVisualModal(props: AssetVisualModalProps) {
 
   async function handleDrawingUpload(file: File | undefined) {
     if (!file || !canAuthorEdit || props.mode !== 'author') return;
-    if (!file.type.startsWith('image/')) {
-      props.onNotify('Please upload an image drawing file (PNG, JPG, SVG, WebP).', 'error');
-      return;
-    }
+    setUploadError(null);
     setUploadingDrawing(true);
     try {
+      const prepared = await prepareImageForUpload(file, 'drawing');
       const fd = new FormData();
-      fd.append('drawing', file);
+      fd.append('drawing', prepared.file);
       const res = await fetch(`/api/library/${props.asset.id}/drawing`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${props.token}` },
         body: fd,
       });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        props.onNotify(data.error ?? 'Failed to upload asset drawing.', 'error');
+      const parsed = await parseApiResponse<{ drawingUrl?: string; error?: string }>(res);
+      if (!parsed.ok) {
+        const msg = parsed.errorMessage ?? 'Failed to upload asset drawing.';
+        setUploadError(msg);
+        props.onNotify(msg, 'error');
         return;
       }
       await props.onSyncComplete();
-      props.onNotify(`Uploaded drawing for ${props.asset.code}.`);
-    } catch {
-      props.onNotify('Network error uploading asset drawing.', 'error');
+      props.onNotify(
+        prepared.wasOptimized
+          ? `Uploaded drawing for ${props.asset.code} (${prepared.note}).`
+          : `Uploaded drawing for ${props.asset.code}.`
+      );
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Network error uploading asset drawing.';
+      setUploadError(msg);
+      props.onNotify(msg, 'error');
     } finally {
       setUploadingDrawing(false);
     }
@@ -494,25 +509,36 @@ export function AssetVisualModal(props: AssetVisualModalProps) {
     if (props.mode !== 'inspect' || props.isLocked || !selectedPin || !files || files.length === 0) {
       return;
     }
+    setUploadError(null);
     setUploadingPinPhoto(true);
     try {
+      const preparedList = await Promise.all(
+        Array.from(files).map((f) => prepareImageForUpload(f, 'photo'))
+      );
       const fd = new FormData();
       fd.append('pinId', selectedPin.id);
-      Array.from(files).forEach((f) => fd.append('photos', f));
+      preparedList.forEach((p) => fd.append('photos', p.file));
       const res = await fetch(`/api/entries/${props.entry.id}/photos`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${props.token}` },
         body: fd,
       });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        props.onNotify(data.error ?? 'Pin photo upload failed.', 'error');
+      const parsed = await parseApiResponse<{ error?: string }>(res);
+      if (!parsed.ok) {
+        const msg = parsed.errorMessage ?? 'Pin photo upload failed.';
+        setUploadError(msg);
+        props.onNotify(msg, 'error');
         return;
       }
       await props.onSyncComplete();
-      props.onNotify(`Uploaded ${files.length} photo(s) for Pin #${selectedPin.pinNumber}.`);
-    } catch {
-      props.onNotify('Network error uploading pin photo.', 'error');
+      props.onNotify(`Uploaded ${preparedList.length} photo(s) for Pin #${selectedPin.pinNumber}.`);
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Network error uploading pin photo.';
+      setUploadError(msg);
+      props.onNotify(msg, 'error');
     } finally {
       setUploadingPinPhoto(false);
     }
@@ -597,7 +623,7 @@ export function AssetVisualModal(props: AssetVisualModalProps) {
                   <span>{uploadingDrawing ? 'Uploading...' : drawingUrl ? 'Replace Drawing' : 'Upload Drawing'}</span>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept={ACCEPTED_IMAGE_ACCEPT}
                     disabled={uploadingDrawing}
                     onChange={(e) => {
                       handleDrawingUpload(e.target.files?.[0]);
@@ -670,6 +696,20 @@ export function AssetVisualModal(props: AssetVisualModalProps) {
               dropActive ? 'ring-2 ring-inset ring-[#1D4ED8] bg-[#EFF6FF] dark:bg-[#1E3A8A]/20' : ''
             }`}
           >
+            {uploadError && (
+              <div className="mb-3 w-full max-w-lg px-3.5 py-2.5 rounded-md border border-[#FECACA] dark:border-[#991B1B] bg-[#FEF2F2] dark:bg-[#450A0A]/60 text-xs text-[#991B1B] dark:text-[#FCA5A5] flex items-start justify-between gap-3">
+                <span>{uploadError}</span>
+                <button
+                  type="button"
+                  onClick={() => setUploadError(null)}
+                  className="text-[#991B1B] dark:text-[#FCA5A5] hover:opacity-75 shrink-0"
+                  aria-label="Dismiss upload error"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {!drawingUrl ? (
               <div className="text-center max-w-md space-y-3 py-10 px-6 border-2 border-dashed border-[#CBD5E1] dark:border-[#334155] rounded-lg bg-white/70 dark:bg-[#111827]/70">
                 <ImageIcon className="w-10 h-10 text-[#94A3B8] mx-auto" />
@@ -678,16 +718,16 @@ export function AssetVisualModal(props: AssetVisualModalProps) {
                 </div>
                 <p className="text-xs text-[#64748B] dark:text-[#94A3B8] leading-relaxed">
                   {canAuthorEdit
-                    ? 'Drag & drop a P&ID schematic, GA drawing, or equipment photo here—or click below—to start placing custom inspection pins and linking them to tasks.'
+                    ? 'Drag & drop a P&ID schematic, GA drawing, or equipment photo (PNG, JPG, WebP, SVG, HEIC) here—or click below. Oversized raster images are auto-compressed.'
                     : 'No schematic drawing has been attached to this asset yet.'}
                 </p>
                 {canAuthorEdit && (
                   <label className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md cursor-pointer transition-colors">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>{uploadingDrawing ? 'Uploading Drawing...' : 'Select Asset Drawing'}</span>
+                    <span>{uploadingDrawing ? 'Optimizing & Uploading...' : 'Select Asset Drawing'}</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept={ACCEPTED_IMAGE_ACCEPT}
                       disabled={uploadingDrawing}
                       onChange={(e) => {
                         handleDrawingUpload(e.target.files?.[0]);
@@ -1354,7 +1394,7 @@ export function AssetVisualModal(props: AssetVisualModalProps) {
                               <span>{uploadingPinPhoto ? 'Uploading...' : 'Attach Photo'}</span>
                               <input
                                 type="file"
-                                accept="image/*"
+                                accept={ACCEPTED_IMAGE_ACCEPT}
                                 multiple
                                 disabled={uploadingPinPhoto}
                                 onChange={(e) => {

@@ -43,6 +43,11 @@ import type {
 } from '../types.ts';
 import { formatRoleLabel, hasAnyRole } from '../types.ts';
 import {
+  ACCEPTED_IMAGE_ACCEPT,
+  parseApiResponse,
+  prepareImageForUpload,
+} from '../utils/imageUpload.ts';
+import {
   exportReportsToCsv,
   formatAuditTimestamp,
   formatConditionLabel,
@@ -2010,24 +2015,35 @@ function EntryRowEditor({
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
+      const preparedList = await Promise.all(
+        Array.from(files).map((file) => prepareImageForUpload(file, 'photo'))
+      );
       const formData = new FormData();
-      Array.from(files).forEach((file) => {
-        formData.append('photos', file);
+      preparedList.forEach((p) => {
+        formData.append('photos', p.file);
       });
       const res = await fetch(`/api/entries/${entry.id}/photos`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        onNotify(data.error ?? 'Photo upload failed.', 'error');
+      const parsed = await parseApiResponse<{ error?: string }>(res);
+      if (!parsed.ok) {
+        onNotify(parsed.errorMessage ?? 'Photo upload failed.', 'error');
         return;
       }
       await onSyncComplete();
-      onNotify(`Uploaded ${files.length} photo(s) for ${entry.itemCode}.`);
-    } catch {
-      onNotify('Network error uploading photo.', 'error');
+      const optimizedCount = preparedList.filter((p) => p.wasOptimized).length;
+      onNotify(
+        optimizedCount > 0
+          ? `Uploaded ${preparedList.length} photo(s) for ${entry.itemCode} (${optimizedCount} auto-optimized).`
+          : `Uploaded ${preparedList.length} photo(s) for ${entry.itemCode}.`
+      );
+    } catch (err) {
+      onNotify(
+        err instanceof Error && err.message ? err.message : 'Network error uploading photo.',
+        'error'
+      );
     } finally {
       setUploading(false);
     }
@@ -2377,7 +2393,7 @@ function EntryRowEditor({
               <span>{uploading ? 'Uploading...' : 'Upload Photo(s)'}</span>
               <input
                 type="file"
-                accept="image/*"
+                accept={ACCEPTED_IMAGE_ACCEPT}
                 multiple
                 disabled={uploading}
                 onChange={(e) => {

@@ -1,5 +1,5 @@
 {
-  "name": "OpsLedger — Inspection & Project Operations",
+  "name": "IndSpectora — Inspection & Project Operations",
   "description": "Routine inspection, yearly maintenance reporting with photo evidence and digital signatures, real-time inspection library sync, and Gantt project monitoring with blocker tracking.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

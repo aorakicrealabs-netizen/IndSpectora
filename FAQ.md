@@ -1,4 +1,4 @@
-# OpsLedger — Frequently Asked Questions (FAQ)
+# IndSpectora — Frequently Asked Questions (FAQ)
 
 Reference guide covering **Access & Multi-Role Permissions**, **Asset Library, Facility Zones & CSV Import**, **Inspections, Sequential Approvals & Digital Footprints**, **Projects, WBS, Gantt & Table Views**, and **Localhost Storage & Interactive Tours**.
 
@@ -7,7 +7,7 @@ Reference guide covering **Access & Multi-Role Permissions**, **Asset Library, F
 ## 1. Access, Accounts & Multi-Role Permissions
 
 ### What are the differences between Admin, Approver, and User roles?
-OpsLedger uses three composable roles so access matches real plant responsibilities. A single user can hold more than one role at the same time (for example, `Approver + User`, or `Admin + Approver`):
+IndSpectora uses three composable roles so access matches real plant responsibilities. A single user can hold more than one role at the same time (for example, `Approver + User`, or `Admin + Approver`):
 - **User (Standard Executor)**: Can start and submit inspection reports, edit their own `Draft` or `Sent Back` reports, post comments, and update progress and comments on Project Activities assigned to them.
 - **Approver**: Has all User capabilities plus authority to create/edit **Facility Zones**, **Asset Library** items, **CSV imports**, and **Projects / WBS Activities**—and appears in the 1–6 sequential Approver picker to **Approve** or **Send Back** inspections.
 - **Admin**: Has full **User Management** (create, multi-role assignment, password reset, delete) and override capability to edit already `Pending Approval` / `Approved` inspection reports or `Completed` Project Activities with full **Digital Footprint** logging.
@@ -19,9 +19,9 @@ Only accounts that explicitly hold the **Approver** role appear in the sequentia
 3. Save changes—the user immediately becomes selectable across Steps 1 to 6.
 
 ### What are the default first-time login accounts, and should we change them?
-When OpsLedger boots against an empty SQLite database, it seeds two starter accounts only (no mock operational data):
-- `admin@opsledger.local` / `admin123` (`Admin + Approver`)
-- `inspector@opsledger.local` / `inspect123` (`User`)
+When IndSpectora boots against an empty SQLite database, it seeds two starter accounts only (no mock operational data):
+- `admin@indspectora.local` / `admin123` (`Admin + Approver`)
+- `inspector@indspectora.local` / `inspect123` (`User`)
 
 Reset both starter passwords in **User Management** immediately after first deployment and create named accounts for your team.
 
@@ -36,7 +36,7 @@ Physical equipment is often inspected across multiple cadences—for example, ro
 Every Asset can be assigned to a **Facility / Zone Area** (such as `DRY-01 — Dryer Hall Alpha`). When starting a new inspection, teams can filter the Asset checklist by Facility / Zone Area and keyword search so only equipment relevant to that zone or shift is loaded.
 
 ### How do I format Custom Inspection Parameters when bulk-importing Assets via CSV?
-Click **Download CSV Template** in **Asset Library** to download `opsledger-asset-import-template.csv`. Existing Asset Codes are updated on re-import, while new codes are inserted automatically.
+Click **Download CSV Template** in **Asset Library** to download `indspectora-asset-import-template.csv`. Existing Asset Codes are updated on re-import, while new codes are inserted automatically.
 - **Columns**: `Asset Code`, `Category`, `Asset Title`, `Facility Area Code`, `Description`, `Inspection Criteria`, `Criticality (low/medium/high)`, `Require Photo (yes/no)`, `Active (yes/no)`, `Custom Parameters`.
 - **Custom Parameters syntax** (column 10): Separate multiple parameters with `;` and fields inside each parameter with `|` (`Label|type|unit|required`).
 - **Example**: `Powder Accumulation|number|kg|required; Chamber Seal Intact|boolean||required; Operator Notes|text|`
@@ -88,8 +88,8 @@ Inside **Active Project**, switch between visual **Gantt Timeline** bars and a c
 
 ## 5. Localhost Operations, Data & Tours
 
-### Where are OpsLedger records, photos, and asset drawings stored on localhost?
-- SQLite database: `./data/opsledger.db`
+### Where are IndSpectora records, photos, and asset drawings stored on localhost?
+- SQLite database: `./data/indspectora.db`
 - Uploaded photos & drawings: `./data/uploads/`
 
 Back up anytime by stopping the server and copying `./data/`. In Docker Compose, `./data` is mounted directly into `/app/data` so container rebuilds preserve all data.

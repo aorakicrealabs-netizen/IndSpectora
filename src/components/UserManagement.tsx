@@ -588,7 +588,7 @@ export function UserManagement({
                     required
                     value={createForm.email}
                     onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                    placeholder="morgan.lee@opsledger.local"
+                    placeholder="morgan.lee@indspectora.local"
                     className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
                   />
                 </div>

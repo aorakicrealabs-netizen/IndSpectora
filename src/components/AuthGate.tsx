@@ -88,7 +88,7 @@ export function AuthGate({ onAuthenticated, theme, onToggleTheme }: AuthGateProp
           <div>
             <div className="flex items-center justify-between border-b border-[#E2E8F0] dark:border-[#1E293B] pb-5 mb-6">
               <span className="font-display text-xl font-bold tracking-tight text-[#0F172A] dark:text-[#F8FAFC]">
-                OpsLedger
+                IndSpectora
               </span>
               <span className="font-mono text-xs text-[#64748B] dark:text-[#94A3B8]">
                 Local Operations Server
@@ -140,26 +140,26 @@ export function AuthGate({ onAuthenticated, theme, onToggleTheme }: AuthGateProp
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => fillStarterAccount('admin@opsledger.local', 'admin123')}
+                onClick={() => fillStarterAccount('admin@indspectora.local', 'admin123')}
                 className="text-left px-3.5 py-2.5 bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#E2E8F0] dark:border-[#334155] rounded-md transition-colors"
               >
                 <div className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
                   Admin / Approver Account
                 </div>
                 <div className="font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8] truncate mt-0.5">
-                  admin@opsledger.local
+                  admin@indspectora.local
                 </div>
               </button>
               <button
                 type="button"
-                onClick={() => fillStarterAccount('inspector@opsledger.local', 'inspect123')}
+                onClick={() => fillStarterAccount('inspector@indspectora.local', 'inspect123')}
                 className="text-left px-3.5 py-2.5 bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#E2E8F0] dark:border-[#334155] rounded-md transition-colors"
               >
                 <div className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
                   Standard User Account
                 </div>
                 <div className="font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8] truncate mt-0.5">
-                  inspector@opsledger.local
+                  inspector@indspectora.local
                 </div>
               </button>
             </div>

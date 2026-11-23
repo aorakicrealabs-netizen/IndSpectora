@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpsLedger — Inspection &amp; Project Operations</title>
+    <title>IndSpectora — Inspection &amp; Project Operations</title>
     <meta
       name="description"
       content="Routine inspection, yearly maintenance reporting with photo evidence and digital signatures, real-time inspection library sync, and Gantt project monitoring with blocker tracking."
     />
-    <meta property="og:title" content="OpsLedger — Inspection &amp; Project Operations" />
+    <meta property="og:title" content="IndSpectora — Inspection &amp; Project Operations" />
     <meta
       property="og:description"
       content="Routine inspection, yearly maintenance reporting with photo evidence and digital signatures, real-time inspection library sync, and Gantt project monitoring with blocker tracking."
@@ -23,7 +23,7 @@
     />
     <script>
       try {
-        if (localStorage.getItem('opsledger_theme') === 'dark') {
+        if ((localStorage.getItem('indspectora_theme') || localStorage.getItem('opsledger_theme')) === 'dark') {
           document.documentElement.classList.add('dark');
         }
       } catch (e) {}

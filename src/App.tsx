@@ -40,12 +40,12 @@ import { formatDateTime } from './utils/export.ts';
 type ActiveTab = TourPageKey;
 type ThemeMode = 'light' | 'dark';
 
-const TOKEN_STORAGE_KEY = 'opsledger_session_token';
-const THEME_STORAGE_KEY = 'opsledger_theme';
+const TOKEN_STORAGE_KEY = 'indspectora_session_token';
+const THEME_STORAGE_KEY = 'indspectora_theme';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(TOKEN_STORAGE_KEY)
+    localStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem('opsledger_session_token')
   );
   const [user, setUser] = useState<User | null>(null);
   const [authChecking, setAuthChecking] = useState<boolean>(Boolean(token));
@@ -58,14 +58,19 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('opsledger_sidebar_collapsed') === 'true';
+      return (
+        (localStorage.getItem('indspectora_sidebar_collapsed') ??
+          localStorage.getItem('opsledger_sidebar_collapsed')) === 'true'
+      );
     } catch {
       return false;
     }
   });
   const [theme, setTheme] = useState<ThemeMode>(() => {
     try {
-      return localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+      return (localStorage.getItem(THEME_STORAGE_KEY) || localStorage.getItem('opsledger_theme')) === 'dark'
+        ? 'dark'
+        : 'light';
     } catch {
       return 'light';
     }
@@ -113,7 +118,7 @@ export default function App() {
     setSidebarCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('opsledger_sidebar_collapsed', String(next));
+        localStorage.setItem('indspectora_sidebar_collapsed', String(next));
       } catch {
         // Ignore storage quota errors
       }
@@ -376,7 +381,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] flex items-center justify-center">
         <div className="text-sm text-[#475569] dark:text-[#94A3B8] font-medium">
-          Connecting to local OpsLedger server...
+          Connecting to local IndSpectora server...
         </div>
       </div>
     );
@@ -458,7 +463,7 @@ export default function App() {
                 sidebarCollapsed ? 'lg:hidden' : ''
               }`}
             >
-              OpsLedger
+              IndSpectora
             </span>
 
             <button

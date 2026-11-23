@@ -96,7 +96,7 @@ export function downloadAssetCsvTemplate(facilityAreas: FacilityArea[]): void {
       'Discharge Pressure|number|bar; Mechanical Seal Leak|boolean|',
     ],
   ];
-  downloadCsvFile('opsledger-asset-import-template.csv', rows);
+  downloadCsvFile('indspectora-asset-import-template.csv', rows);
 }
 
 export function parseCsvMatrix(text: string): string[][] {

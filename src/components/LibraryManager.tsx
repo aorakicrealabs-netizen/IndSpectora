@@ -36,6 +36,11 @@ import {
   parseAssetCsvText,
   type ParsedAssetCsvRow,
 } from '../utils/export.ts';
+import { parseApiResponse, prepareImageForUpload } from '../utils/imageUpload.ts';
+import {
+  AssetVisualDraftPanel,
+  type DraftAssetPin,
+} from './AssetVisualDraftPanel.tsx';
 import { AssetVisualModal } from './AssetVisualModal.tsx';
 import { ResizableTh, useResizableColumns } from './ResizableTable.tsx';
 
@@ -135,8 +140,22 @@ export function LibraryManager({
   const [visualOnly, setVisualOnly] = useState(false);
   const [editingItem, setEditingItem] = useState<LibraryItem | null>(null);
   const [showItemModal, setShowItemModal] = useState(false);
+  const [activeItemModalTab, setActiveItemModalTab] = useState<'details' | 'visual'>('details');
+  const [createdDraftAssetId, setCreatedDraftAssetId] = useState<string | null>(null);
   const [itemForm, setItemForm] = useState<ItemFormState>(EMPTY_ITEM_FORM);
   const [savingItem, setSavingItem] = useState(false);
+  const [saveStatusText, setSaveStatusText] = useState<string | null>(null);
+
+  // Staged visual map state inside Add/Edit Asset Modal
+  const [draftDrawingFile, setDraftDrawingFile] = useState<File | null>(null);
+  const [draftDrawingPreviewUrl, setDraftDrawingPreviewUrl] = useState<string | null>(null);
+  const [draftDrawingNote, setDraftDrawingNote] = useState<string | null>(null);
+  const [draftDrawingRemoved, setDraftDrawingRemoved] = useState(false);
+  const [processingDrawing, setProcessingDrawing] = useState(false);
+  const [drawingError, setDrawingError] = useState<string | null>(null);
+  const [draftPins, setDraftPins] = useState<DraftAssetPin[]>([]);
+  const [deletedPinIds, setDeletedPinIds] = useState<string[]>([]);
+
   const [visualAssetId, setVisualAssetId] = useState<string | null>(null);
   const [historyAssetId, setHistoryAssetId] = useState<string | null>(null);
 
@@ -308,8 +327,45 @@ export function LibraryManager({
 
   // --- Asset Library Handlers ---
 
+  function revokePreviewUrl(url: string | null) {
+    if (url && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      revokePreviewUrl(draftDrawingPreviewUrl);
+    };
+  }, [draftDrawingPreviewUrl]);
+
+  function closeItemModal() {
+    revokePreviewUrl(draftDrawingPreviewUrl);
+    setDraftDrawingFile(null);
+    setDraftDrawingPreviewUrl(null);
+    setDraftDrawingNote(null);
+    setDraftDrawingRemoved(false);
+    setDrawingError(null);
+    setDraftPins([]);
+    setDeletedPinIds([]);
+    setCreatedDraftAssetId(null);
+    setSaveStatusText(null);
+    setShowItemModal(false);
+  }
+
   function openCreateItemModal() {
+    revokePreviewUrl(draftDrawingPreviewUrl);
     setEditingItem(null);
+    setCreatedDraftAssetId(null);
+    setActiveItemModalTab('details');
+    setDraftDrawingFile(null);
+    setDraftDrawingPreviewUrl(null);
+    setDraftDrawingNote(null);
+    setDraftDrawingRemoved(false);
+    setDrawingError(null);
+    setDraftPins([]);
+    setDeletedPinIds([]);
+    setSaveStatusText(null);
     const defaultFacId = facilityAreas.find((f) => f.isActive)?.id ?? '';
     setItemForm({
       ...EMPTY_ITEM_FORM,
@@ -321,7 +377,29 @@ export function LibraryManager({
   }
 
   function openEditItemModal(item: LibraryItem) {
+    revokePreviewUrl(draftDrawingPreviewUrl);
     setEditingItem(item);
+    setCreatedDraftAssetId(item.id);
+    setActiveItemModalTab('details');
+    setDraftDrawingFile(null);
+    setDraftDrawingPreviewUrl(null);
+    setDraftDrawingNote(null);
+    setDraftDrawingRemoved(false);
+    setDrawingError(null);
+    setDraftPins(
+      (item.pins ?? []).map((p) => ({
+        key: p.id,
+        id: p.id,
+        pinNumber: p.pinNumber,
+        label: p.label,
+        guidance: p.guidance,
+        xPercent: p.xPercent,
+        yPercent: p.yPercent,
+        linkedTaskId: p.linkedTaskId ?? null,
+      }))
+    );
+    setDeletedPinIds([]);
+    setSaveStatusText(null);
     setItemForm({
       code: item.code,
       category: item.category,
@@ -341,6 +419,39 @@ export function LibraryManager({
       })),
     });
     setShowItemModal(true);
+  }
+
+  async function handleSelectDraftDrawing(file: File | undefined) {
+    if (!file) return;
+    setDrawingError(null);
+    setProcessingDrawing(true);
+    try {
+      const prepared = await prepareImageForUpload(file, 'drawing');
+      const previewUrl = URL.createObjectURL(prepared.file);
+      revokePreviewUrl(draftDrawingPreviewUrl);
+      setDraftDrawingFile(prepared.file);
+      setDraftDrawingPreviewUrl(previewUrl);
+      setDraftDrawingNote(prepared.note);
+      setDraftDrawingRemoved(false);
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Unable to process selected drawing file.';
+      setDrawingError(msg);
+      onNotify(msg, 'error');
+    } finally {
+      setProcessingDrawing(false);
+    }
+  }
+
+  function handleRemoveDraftDrawing() {
+    revokePreviewUrl(draftDrawingPreviewUrl);
+    setDraftDrawingFile(null);
+    setDraftDrawingPreviewUrl(null);
+    setDraftDrawingNote(null);
+    setDraftDrawingRemoved(true);
+    setDrawingError(null);
   }
 
   function addDraftParameter() {
@@ -377,15 +488,27 @@ export function LibraryManager({
   async function handleSaveItem(e: React.FormEvent) {
     e.preventDefault();
     if (!canEdit) return;
+
+    if (!itemForm.code.trim() || !itemForm.category.trim() || !itemForm.title.trim()) {
+      setActiveItemModalTab('details');
+      onNotify('Asset code, category, and title are required before saving.', 'error');
+      return;
+    }
+
     setSavingItem(true);
+    setDrawingError(null);
+    setSaveStatusText('Saving asset details...');
+
     try {
-      const url = editingItem ? `/api/library/${editingItem.id}` : '/api/library';
-      const method = editingItem ? 'PATCH' : 'POST';
+      const activeAssetId = editingItem?.id ?? createdDraftAssetId;
+      const url = activeAssetId ? `/api/library/${activeAssetId}` : '/api/library';
+      const method = activeAssetId ? 'PATCH' : 'POST';
       const payload = {
         ...itemForm,
         facilityAreaId: itemForm.facilityAreaId || null,
         parameters: itemForm.parameters.filter((p) => p.label.trim().length > 0),
       };
+
       const res = await fetch(url, {
         method,
         headers: {
@@ -394,22 +517,161 @@ export function LibraryManager({
         },
         body: JSON.stringify(payload),
       });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        onNotify(data.error ?? 'Failed to save asset.', 'error');
+      const parsed = await parseApiResponse<{ id?: string; error?: string }>(res);
+      if (!parsed.ok) {
+        onNotify(parsed.errorMessage ?? 'Failed to save asset.', 'error');
         return;
       }
-      setShowItemModal(false);
+
+      const targetAssetId = activeAssetId ?? parsed.data?.id ?? null;
+      if (!targetAssetId) {
+        onNotify('Asset was created without an ID response.', 'error');
+        return;
+      }
+      if (!activeAssetId) {
+        setCreatedDraftAssetId(targetAssetId);
+      }
+
+      // 1. Drawing removal or upload
+      if (draftDrawingRemoved && !draftDrawingFile && editingItem?.drawingUrl) {
+        setSaveStatusText('Removing previous drawing...');
+        const delRes = await fetch(`/api/library/${targetAssetId}/drawing`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const delParsed = await parseApiResponse<{ error?: string }>(delRes);
+        if (!delParsed.ok) {
+          const msg = delParsed.errorMessage ?? 'Failed to remove existing drawing.';
+          setActiveItemModalTab('visual');
+          setDrawingError(msg);
+          onNotify(msg, 'error');
+          await onSyncComplete();
+          return;
+        }
+      }
+
+      if (draftDrawingFile) {
+        setSaveStatusText('Uploading schematic drawing...');
+        const fd = new FormData();
+        fd.append('drawing', draftDrawingFile);
+        const drawRes = await fetch(`/api/library/${targetAssetId}/drawing`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        });
+        const drawParsed = await parseApiResponse<{ drawingUrl?: string; error?: string }>(drawRes);
+        if (!drawParsed.ok) {
+          const msg = drawParsed.errorMessage ?? 'Asset saved, but drawing upload failed.';
+          setActiveItemModalTab('visual');
+          setDrawingError(msg);
+          onNotify(msg, 'error');
+          await onSyncComplete();
+          return;
+        }
+      }
+
+      // 2. Sync deleted, modified, and newly staged inspection pins
+      if (deletedPinIds.length > 0 || draftPins.length > 0) {
+        setSaveStatusText('Syncing visual inspection pins...');
+      }
+
+      for (const pinId of deletedPinIds) {
+        const delPinRes = await fetch(`/api/pins/${pinId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const delPinParsed = await parseApiResponse<{ error?: string }>(delPinRes);
+        if (!delPinParsed.ok) {
+          onNotify(delPinParsed.errorMessage ?? 'Failed to delete an inspection pin.', 'error');
+          setActiveItemModalTab('visual');
+          await onSyncComplete();
+          return;
+        }
+      }
+
+      for (const pin of draftPins) {
+        const cleanLabel = pin.label.trim() || `Checkpoint #${pin.pinNumber}`;
+        if (pin.id) {
+          const orig = editingItem?.pins?.find((p) => p.id === pin.id);
+          const changed =
+            !orig ||
+            orig.pinNumber !== pin.pinNumber ||
+            orig.label !== cleanLabel ||
+            orig.guidance !== pin.guidance.trim() ||
+            orig.xPercent !== pin.xPercent ||
+            orig.yPercent !== pin.yPercent ||
+            (orig.linkedTaskId ?? null) !== (pin.linkedTaskId ?? null);
+
+          if (changed) {
+            const updRes = await fetch(`/api/pins/${pin.id}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                pinNumber: pin.pinNumber,
+                label: cleanLabel,
+                guidance: pin.guidance.trim(),
+                xPercent: pin.xPercent,
+                yPercent: pin.yPercent,
+                linkedTaskId: pin.linkedTaskId || null,
+              }),
+            });
+            const updParsed = await parseApiResponse<{ error?: string }>(updRes);
+            if (!updParsed.ok) {
+              onNotify(updParsed.errorMessage ?? `Failed to update Pin #${pin.pinNumber}.`, 'error');
+              setActiveItemModalTab('visual');
+              await onSyncComplete();
+              return;
+            }
+          }
+        } else {
+          const addRes = await fetch(`/api/library/${targetAssetId}/pins`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              pinNumber: pin.pinNumber,
+              label: cleanLabel,
+              guidance: pin.guidance.trim(),
+              xPercent: pin.xPercent,
+              yPercent: pin.yPercent,
+              linkedTaskId: pin.linkedTaskId || null,
+            }),
+          });
+          const addParsed = await parseApiResponse<{ id?: string; error?: string }>(addRes);
+          if (!addParsed.ok) {
+            onNotify(addParsed.errorMessage ?? `Failed to save Pin #${pin.pinNumber}.`, 'error');
+            setActiveItemModalTab('visual');
+            await onSyncComplete();
+            return;
+          }
+        }
+      }
+
+      const wasEditing = Boolean(editingItem);
+      const pinSummary =
+        draftPins.length > 0 ? ` with ${draftPins.length} visual pin(s)` : '';
+      closeItemModal();
       await onSyncComplete();
       onNotify(
-        editingItem
-          ? `Updated ${itemForm.code} and synced changes to active inspections.`
-          : `Added asset ${itemForm.code} to Asset Library.`
+        wasEditing
+          ? `Updated ${itemForm.code}${pinSummary} and synced changes.`
+          : `Added asset ${itemForm.code}${pinSummary} to Asset Library.`
       );
-    } catch {
-      onNotify('Network error while saving asset.', 'error');
+    } catch (err) {
+      onNotify(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Network error while saving asset.',
+        'error'
+      );
     } finally {
       setSavingItem(false);
+      setSaveStatusText(null);
     }
   }
 
@@ -1591,265 +1853,367 @@ export function LibraryManager({
         </div>
       )}
 
-      {/* Add/Edit Asset Modal (No Maintenance Cycle, With Facility Zone + Custom Inspection Parameters) */}
+      {/* Add/Edit Asset Modal (Two-Tab: Details & Parameters + Visual Map & Pins) */}
       {showItemModal && canEdit && (
         <div className="fixed inset-0 z-50 bg-[#0F172A]/45 dark:bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-lg max-w-2xl w-full max-h-[90vh] flex flex-col shadow-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between shrink-0">
-              <h3 className="font-display text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
-                {editingItem ? `Edit Asset · ${editingItem.code}` : 'New Asset'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowItemModal(false)}
-                className="p-1 text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] rounded"
-              >
-                <X className="w-4 h-4" />
-              </button>
+          <div
+            className={`bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-lg w-full max-h-[92vh] flex flex-col shadow-lg overflow-hidden transition-[max-width] duration-150 ${
+              activeItemModalTab === 'visual' ? 'max-w-5xl' : 'max-w-2xl'
+            }`}
+          >
+            {/* Header + 2-Tab Segmented Switcher */}
+            <div className="px-6 pt-4 pb-3 border-b border-[#E2E8F0] dark:border-[#1E293B] space-y-3 shrink-0">
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="font-display text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+                  {editingItem
+                    ? `Edit Asset · ${editingItem.code}`
+                    : createdDraftAssetId
+                      ? `New Asset · ${itemForm.code || 'Draft'}`
+                      : 'New Asset'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={closeItemModal}
+                  className="p-1 text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] rounded"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="inline-flex items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setActiveItemModalTab('details')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                    activeItemModalTab === 'details'
+                      ? 'bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
+                  }`}
+                >
+                  Details &amp; Parameters
+                  {itemForm.parameters.length > 0 && (
+                    <span className="ml-1.5 font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                      ({itemForm.parameters.length})
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveItemModalTab('visual')}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                    activeItemModalTab === 'visual'
+                      ? 'bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] shadow-xs'
+                      : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
+                  }`}
+                >
+                  Visual Map &amp; Pins
+                  <span className="ml-1.5 font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                    {draftPins.length > 0
+                      ? `(${draftPins.length})`
+                      : draftDrawingPreviewUrl || (!draftDrawingRemoved && editingItem?.drawingUrl)
+                        ? '(Drawing ready)'
+                        : ''}
+                  </span>
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleSaveItem} className="p-6 space-y-4 overflow-y-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                    Asset Code
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={itemForm.code}
-                    onChange={(e) => setItemForm({ ...itemForm, code: e.target.value })}
-                    placeholder="e.g. AST-01"
-                    className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                    Category
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    list="library-categories"
-                    value={itemForm.category}
-                    onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })}
-                    placeholder="Category name"
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
-                  />
-                  <datalist id="library-categories">
-                    {categories.map((cat) => (
-                      <option key={cat} value={cat} />
-                    ))}
-                  </datalist>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                    Asset Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={itemForm.title}
-                    onChange={(e) => setItemForm({ ...itemForm, title: e.target.value })}
-                    placeholder="e.g. Rotary Powder Dryer #1"
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                    Facility / Zone Area
-                  </label>
-                  <select
-                    value={itemForm.facilityAreaId}
-                    onChange={(e) => setItemForm({ ...itemForm, facilityAreaId: e.target.value })}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
-                  >
-                    <option value="">— Unassigned Facility Zone —</option>
-                    {facilityAreas.map((fac) => (
-                      <option key={fac.id} value={fac.id}>
-                        {fac.code} — {fac.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                  Scope / Description
-                </label>
-                <textarea
-                  rows={2}
-                  value={itemForm.description}
-                  onChange={(e) => setItemForm({ ...itemForm, description: e.target.value })}
-                  placeholder="Inspection scope and physical checkpoints..."
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                  Pass / Acceptance Criteria
-                </label>
-                <textarea
-                  rows={2}
-                  value={itemForm.criteria}
-                  onChange={(e) => setItemForm({ ...itemForm, criteria: e.target.value })}
-                  placeholder="Standard tolerance, measurement limits, or safety requirement..."
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                    Criticality
-                  </label>
-                  <select
-                    value={itemForm.criticality}
-                    onChange={(e) =>
-                      setItemForm({
-                        ...itemForm,
-                        criticality: e.target.value as CriticalityLevel,
-                      })
-                    }
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-
-                <div className="flex items-end pb-2">
-                  <label className="inline-flex items-center gap-2 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={itemForm.requirePhoto}
-                      onChange={(e) =>
-                        setItemForm({ ...itemForm, requirePhoto: e.target.checked })
-                      }
-                      className="rounded border-[#CBD5E1] text-[#1D4ED8] focus:ring-[#1D4ED8]"
-                    />
-                    <span>Require Photo Evidence</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Custom Inspection Parameters Builder */}
-              <div className="pt-3 border-t border-[#E2E8F0] dark:border-[#1E293B] space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
-                      Custom Inspection Parameters
+            <form onSubmit={handleSaveItem} className="flex-1 flex flex-col overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1">
+                {activeItemModalTab === 'details' ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                          Asset Code
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={itemForm.code}
+                          onChange={(e) => setItemForm({ ...itemForm, code: e.target.value })}
+                          placeholder="e.g. AST-01"
+                          className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                          Category
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          list="library-categories"
+                          value={itemForm.category}
+                          onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })}
+                          placeholder="Category name"
+                          className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                        />
+                        <datalist id="library-categories">
+                          {categories.map((cat) => (
+                            <option key={cat} value={cat} />
+                          ))}
+                        </datalist>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
-                      e.g., Powder Accumulation (Number + kg), Filter Replaced (Yes/No), Bearing Note (Text)
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={addDraftParameter}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1D4ED8] dark:text-[#60A5FA] bg-[#EFF6FF] dark:bg-[#1E3A8A]/30 hover:bg-[#DBEAFE] dark:hover:bg-[#1E3A8A]/50 rounded-md shrink-0"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Parameter</span>
-                  </button>
-                </div>
 
-                {itemForm.parameters.length === 0 ? (
-                  <div className="p-3 bg-[#F8FAFC] dark:bg-[#0F172A] border border-dashed border-[#CBD5E1] dark:border-[#334155] rounded text-xs text-[#64748B] dark:text-[#94A3B8]">
-                    No custom parameters yet. Click &ldquo;Add Parameter&rdquo; to track custom field readings.
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                          Asset Title
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={itemForm.title}
+                          onChange={(e) => setItemForm({ ...itemForm, title: e.target.value })}
+                          placeholder="e.g. Rotary Powder Dryer #1"
+                          className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                          Facility / Zone Area
+                        </label>
+                        <select
+                          value={itemForm.facilityAreaId}
+                          onChange={(e) =>
+                            setItemForm({ ...itemForm, facilityAreaId: e.target.value })
+                          }
+                          className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                        >
+                          <option value="">— Unassigned Facility Zone —</option>
+                          {facilityAreas.map((fac) => (
+                            <option key={fac.id} value={fac.id}>
+                              {fac.code} — {fac.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                        Scope / Description
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={itemForm.description}
+                        onChange={(e) => setItemForm({ ...itemForm, description: e.target.value })}
+                        placeholder="Inspection scope and physical checkpoints..."
+                        className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                        Pass / Acceptance Criteria
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={itemForm.criteria}
+                        onChange={(e) => setItemForm({ ...itemForm, criteria: e.target.value })}
+                        placeholder="Standard tolerance, measurement limits, or safety requirement..."
+                        className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                          Criticality
+                        </label>
+                        <select
+                          value={itemForm.criticality}
+                          onChange={(e) =>
+                            setItemForm({
+                              ...itemForm,
+                              criticality: e.target.value as CriticalityLevel,
+                            })
+                          }
+                          className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                        >
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-end pb-2">
+                        <label className="inline-flex items-center gap-2 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={itemForm.requirePhoto}
+                            onChange={(e) =>
+                              setItemForm({ ...itemForm, requirePhoto: e.target.checked })
+                            }
+                            className="rounded border-[#CBD5E1] text-[#1D4ED8] focus:ring-[#1D4ED8]"
+                          />
+                          <span>Require Photo Evidence</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Custom Inspection Parameters Builder */}
+                    <div className="pt-3 border-t border-[#E2E8F0] dark:border-[#1E293B] space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                            Custom Inspection Parameters
+                          </div>
+                          <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                            e.g., Powder Accumulation (Number + kg), Filter Replaced (Yes/No), Bearing Note (Text)
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addDraftParameter}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1D4ED8] dark:text-[#60A5FA] bg-[#EFF6FF] dark:bg-[#1E3A8A]/30 hover:bg-[#DBEAFE] dark:hover:bg-[#1E3A8A]/50 rounded-md shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Parameter</span>
+                        </button>
+                      </div>
+
+                      {itemForm.parameters.length === 0 ? (
+                        <div className="p-3 bg-[#F8FAFC] dark:bg-[#0F172A] border border-dashed border-[#CBD5E1] dark:border-[#334155] rounded text-xs text-[#64748B] dark:text-[#94A3B8]">
+                          No custom parameters yet. Click &ldquo;Add Parameter&rdquo; to track custom field readings.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {itemForm.parameters.map((param, idx) => (
+                            <div
+                              key={param.id ?? `draft-${idx}`}
+                              className="grid grid-cols-12 gap-2 items-center p-2.5 bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-md"
+                            >
+                              <div className="col-span-5">
+                                <input
+                                  type="text"
+                                  required
+                                  value={param.label}
+                                  onChange={(e) =>
+                                    updateDraftParameter(idx, { label: e.target.value })
+                                  }
+                                  placeholder="Parameter label..."
+                                  className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-[#111827] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded"
+                                />
+                              </div>
+                              <div className="col-span-3">
+                                <select
+                                  value={param.paramType}
+                                  onChange={(e) =>
+                                    updateDraftParameter(idx, {
+                                      paramType: e.target.value as CustomParameterType,
+                                    })
+                                  }
+                                  className="w-full px-2 py-1.5 text-xs bg-white dark:bg-[#111827] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded"
+                                >
+                                  <option value="number">Number + Unit</option>
+                                  <option value="text">Text</option>
+                                  <option value="boolean">Yes / No</option>
+                                </select>
+                              </div>
+                              <div className="col-span-2">
+                                <input
+                                  type="text"
+                                  disabled={param.paramType !== 'number'}
+                                  value={param.unit}
+                                  onChange={(e) =>
+                                    updateDraftParameter(idx, { unit: e.target.value })
+                                  }
+                                  placeholder={param.paramType === 'number' ? 'Unit (kg)' : '—'}
+                                  className="w-full px-2 py-1.5 text-xs font-mono bg-white dark:bg-[#111827] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] disabled:opacity-45 rounded"
+                                />
+                              </div>
+                              <div className="col-span-2 flex items-center justify-end gap-1.5">
+                                <label
+                                  title="Required during inspection"
+                                  className="inline-flex items-center gap-1 text-[11px] text-[#475569] dark:text-[#94A3B8] cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={param.isRequired}
+                                    onChange={(e) =>
+                                      updateDraftParameter(idx, { isRequired: e.target.checked })
+                                    }
+                                  />
+                                  <span>Req</span>
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => removeDraftParameter(idx)}
+                                  className="p-1 text-[#64748B] hover:text-[#DC2626] dark:hover:text-[#F87171]"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {itemForm.parameters.map((param, idx) => (
-                      <div
-                        key={param.id ?? `draft-${idx}`}
-                        className="grid grid-cols-12 gap-2 items-center p-2.5 bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-md"
-                      >
-                        <div className="col-span-5">
-                          <input
-                            type="text"
-                            required
-                            value={param.label}
-                            onChange={(e) => updateDraftParameter(idx, { label: e.target.value })}
-                            placeholder="Parameter label..."
-                            className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-[#111827] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded"
-                          />
-                        </div>
-                        <div className="col-span-3">
-                          <select
-                            value={param.paramType}
-                            onChange={(e) =>
-                              updateDraftParameter(idx, {
-                                paramType: e.target.value as CustomParameterType,
-                              })
-                            }
-                            className="w-full px-2 py-1.5 text-xs bg-white dark:bg-[#111827] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded"
-                          >
-                            <option value="number">Number + Unit</option>
-                            <option value="text">Text</option>
-                            <option value="boolean">Yes / No</option>
-                          </select>
-                        </div>
-                        <div className="col-span-2">
-                          <input
-                            type="text"
-                            disabled={param.paramType !== 'number'}
-                            value={param.unit}
-                            onChange={(e) => updateDraftParameter(idx, { unit: e.target.value })}
-                            placeholder={param.paramType === 'number' ? 'Unit (kg)' : '—'}
-                            className="w-full px-2 py-1.5 text-xs font-mono bg-white dark:bg-[#111827] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] disabled:opacity-45 rounded"
-                          />
-                        </div>
-                        <div className="col-span-2 flex items-center justify-end gap-1.5">
-                          <label
-                            title="Required during inspection"
-                            className="inline-flex items-center gap-1 text-[11px] text-[#475569] dark:text-[#94A3B8] cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={param.isRequired}
-                              onChange={(e) =>
-                                updateDraftParameter(idx, { isRequired: e.target.checked })
-                              }
-                            />
-                            <span>Req</span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => removeDraftParameter(idx)}
-                            className="p-1 text-[#64748B] hover:text-[#DC2626] dark:hover:text-[#F87171]"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <AssetVisualDraftPanel
+                    assetCode={itemForm.code}
+                    existingDrawingUrl={editingItem?.drawingUrl ?? null}
+                    draftDrawingPreviewUrl={draftDrawingPreviewUrl}
+                    draftDrawingNote={draftDrawingNote}
+                    draftDrawingRemoved={draftDrawingRemoved}
+                    processingDrawing={processingDrawing}
+                    drawingError={drawingError}
+                    onSelectDrawingFile={handleSelectDraftDrawing}
+                    onRemoveDrawing={handleRemoveDraftDrawing}
+                    onClearError={() => setDrawingError(null)}
+                    draftPins={draftPins}
+                    onChangePins={setDraftPins}
+                    onTrackDeletedPinId={(pinId) =>
+                      setDeletedPinIds((prev) =>
+                        prev.includes(pinId) ? prev : [...prev, pinId]
+                      )
+                    }
+                    projects={projects}
+                    tasks={tasks}
+                  />
                 )}
               </div>
 
-              <div className="pt-3 border-t border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowItemModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingItem}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] disabled:opacity-60 rounded-md"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{savingItem ? 'Saving...' : 'Save & Sync Asset'}</span>
-                </button>
+              <div className="px-6 py-4 border-t border-[#E2E8F0] dark:border-[#1E293B] flex flex-wrap items-center justify-between gap-3 shrink-0 bg-[#F8FAFC] dark:bg-[#0F172A]/60">
+                <div className="text-xs text-[#64748B] dark:text-[#94A3B8]">
+                  {saveStatusText ? (
+                    <span className="font-medium text-[#1D4ED8] dark:text-[#60A5FA]">
+                      {saveStatusText}
+                    </span>
+                  ) : (
+                    <span>
+                      {itemForm.parameters.length} parameter(s)
+                      <span aria-hidden="true" className="mx-1.5">·</span>
+                      {draftDrawingPreviewUrl || (!draftDrawingRemoved && editingItem?.drawingUrl)
+                        ? 'Visual drawing attached'
+                        : 'No visual drawing'}
+                      <span aria-hidden="true" className="mx-1.5">·</span>
+                      {draftPins.length} pin(s)
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={closeItemModal}
+                    className="px-4 py-2 text-xs font-medium text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingItem || processingDrawing}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] disabled:opacity-60 rounded-md whitespace-nowrap shrink-0"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{savingItem ? 'Saving...' : 'Save & Sync Asset'}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
