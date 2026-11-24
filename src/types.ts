@@ -7,6 +7,7 @@ export interface User {
   role: UserRole;
   roles: UserRole[];
   title: string;
+  isMock?: boolean;
   createdAt: string;
 }
 
@@ -39,6 +40,7 @@ export interface FacilityArea {
   riskLevel: CriticalityLevel;
   description: string;
   isActive: boolean;
+  isMock?: boolean;
   updatedAt: string;
 }
 
@@ -88,6 +90,7 @@ export interface LibraryItem {
   drawingUrl: string | null;
   pins: AssetPin[];
   parameters: AssetParameter[];
+  isMock?: boolean;
   updatedAt: string;
 }
 
@@ -228,6 +231,7 @@ export interface InspectionReport {
   approvalSteps: ReportApprovalStep[];
   comments: ReportComment[];
   footprints: ReportFootprint[];
+  isMock?: boolean;
 }
 
 export type TaskType = 'phase' | 'task' | 'milestone';
@@ -242,6 +246,7 @@ export interface Project {
   cycleType: CycleType;
   startDate: string;
   endDate: string;
+  useWbs: boolean;
   createdAt: string;
 }
 
@@ -262,6 +267,7 @@ export interface ProjectTask {
   linkedCycle: CycleType | 'none';
   notes: string;
   sortOrder: number;
+  isMock?: boolean;
   updatedAt: string;
 }
 
@@ -327,7 +333,60 @@ export interface UserNotification {
   createdAt: string;
 }
 
-export type TourPageKey = 'dashboard' | 'inspections' | 'library' | 'gantt' | 'users' | 'howto';
+export type TourPageKey =
+  | 'dashboard'
+  | 'inspections'
+  | 'library'
+  | 'history'
+  | 'gantt'
+  | 'users'
+  | 'settings'
+  | 'howto';
+
+export type TableDensity = 'comfortable' | 'compact';
+export type LandingTabPreference = 'dashboard' | 'inspections' | 'library' | 'gantt';
+
+export interface UserPreferences {
+  tableDensity: TableDensity;
+  defaultLandingTab: LandingTabPreference;
+  toastNotifications: boolean;
+  approvalAlerts: boolean;
+}
+
+export interface WorkspaceDefaults {
+  organizationName: string;
+  defaultCycleType: CycleType;
+  defaultCriticality: CriticalityLevel;
+  defaultRequirePhoto: boolean;
+}
+
+export interface DeveloperDatasetCounts {
+  manualZones: number;
+  mockZones: number;
+  manualAssets: number;
+  mockAssets: number;
+  manualProjects: number;
+  mockProjects: number;
+  manualTasks: number;
+  mockTasks: number;
+  manualReports: number;
+  mockReports: number;
+  manualUsers: number;
+  mockUsers: number;
+}
+
+export interface DeveloperSettingsState {
+  developerMode: boolean;
+  mockDataEnabled: boolean;
+  counts: DeveloperDatasetCounts;
+}
+
+export interface SessionInfo {
+  sessionId: string;
+  createdAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
 
 export interface BootstrapPayload {
   libraryItems: LibraryItem[];
@@ -342,6 +401,9 @@ export interface BootstrapPayload {
   users: User[];
   notifications: UserNotification[];
   completedTours: TourPageKey[];
+  userPreferences: UserPreferences;
+  workspaceDefaults: WorkspaceDefaults;
+  developerState: DeveloperSettingsState;
 }
 
 export type RealtimeEventType =

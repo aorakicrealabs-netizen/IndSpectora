@@ -104,16 +104,16 @@ export function HowToUsePage({
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-4 sm:p-6 flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <div className="inline-flex items-center gap-2 text-xs font-mono font-semibold text-[#1D4ED8] dark:text-[#60A5FA] mb-1.5">
             <BookOpen className="w-4 h-4" />
             <span>IndSpectora User Guide &amp; Interactive Tours</span>
           </div>
-          <h1 className="font-display text-2xl font-bold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
+          <h1 className="font-display text-xl sm:text-2xl font-bold text-[#0F172A] dark:text-[#F8FAFC] tracking-tight">
             How to Use IndSpectora
           </h1>
-          <p className="text-sm text-[#475569] dark:text-[#94A3B8] mt-1.5 leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#475569] dark:text-[#94A3B8] mt-1.5 leading-relaxed">
             Explore step-by-step operating instructions organized by workspace page, review
             multi-role access rules, browse common workflow FAQs, or relaunch any interactive
             walkthrough tour.
@@ -128,12 +128,12 @@ export function HowToUsePage({
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
           <button
             type="button"
             disabled={resetting}
             onClick={handleResetTours}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-medium text-[#334155] dark:text-[#CBD5E1] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] disabled:opacity-60 rounded-md transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 min-h-[40px] text-xs font-medium text-[#334155] dark:text-[#CBD5E1] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] disabled:opacity-60 rounded-md transition-colors whitespace-nowrap shrink-0"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>{resetting ? 'Resetting Tours...' : 'Reset All First-Time Tours'}</span>
@@ -141,7 +141,7 @@ export function HowToUsePage({
           <button
             type="button"
             onClick={() => onStartTour('howto')}
-            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 min-h-[40px] text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md transition-colors whitespace-nowrap shrink-0"
           >
             <Compass className="w-3.5 h-3.5" />
             <span>Tour This Page</span>
@@ -217,7 +217,7 @@ export function HowToUsePage({
         {/* Selected Page Walkthrough Panel */}
         {activeGuide && (
           <div className="lg:col-span-8 bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
-            <div className="px-6 py-5 border-b border-[#E2E8F0] dark:border-[#1E293B] flex flex-wrap items-center justify-between gap-4">
+            <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[#E2E8F0] dark:border-[#1E293B] flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="font-display text-lg font-bold text-[#0F172A] dark:text-[#F8FAFC]">
                   {activeGuide.title}
@@ -229,14 +229,14 @@ export function HowToUsePage({
               <button
                 type="button"
                 onClick={() => onStartTour(activeGuide.key)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[40px] text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md transition-colors whitespace-nowrap shrink-0"
               >
                 <Play className="w-3.5 h-3.5" />
                 <span>Open &amp; Start Interactive Tour</span>
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-4 sm:p-6 space-y-6">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-[#64748B] dark:text-[#94A3B8] mb-2">
                   Workflow Overview
@@ -269,11 +269,11 @@ export function HowToUsePage({
                           {step.targetArea}
                         </span>
                       </div>
-                      <p className="text-xs text-[#475569] dark:text-[#94A3B8] leading-relaxed pl-7">
+                      <p className="text-xs text-[#475569] dark:text-[#94A3B8] leading-relaxed sm:pl-7">
                         {step.description}
                       </p>
                       {step.tip && (
-                        <p className="text-xs text-[#1D4ED8] dark:text-[#60A5FA] mt-1.5 pl-7">
+                        <p className="text-xs text-[#1D4ED8] dark:text-[#60A5FA] mt-1.5 sm:pl-7">
                           Tip: {step.tip}
                         </p>
                       )}
@@ -432,7 +432,7 @@ export function HowToUsePage({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="FAQ Categories">
+          <div className="flex sm:flex-wrap items-center gap-1.5 overflow-x-auto max-w-full pb-1 sm:pb-0" role="tablist" aria-label="FAQ Categories">
             {FAQ_CATEGORIES.map((cat) => {
               const active = faqCategory === cat.key;
               return (
@@ -481,7 +481,8 @@ export function HowToUsePage({
               const isOpen = openFaqIds.has(item.id);
               const catLabel = FAQ_CATEGORY_LABEL_MAP.get(item.category) ?? item.category;
               const canJumpToTour =
-                item.relatedPageKey && (item.relatedPageKey !== 'users' || userRoles.includes('admin'));
+                item.relatedPageKey &&
+                (item.relatedPageKey !== 'users' || userRoles.includes('admin'));
 
               return (
                 <div key={item.id} className="transition-colors">

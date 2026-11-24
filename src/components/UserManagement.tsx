@@ -335,20 +335,20 @@ export function UserManagement({
   return (
     <div className="space-y-5">
       {/* Header & Controls */}
-      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
-          <div className="relative flex-1 max-w-xs">
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
+          <div className="relative flex-1 min-w-[200px] sm:max-w-xs">
             <Search className="w-4 h-4 text-[#64748B] dark:text-[#94A3B8] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, email, or job title..."
-              className="w-full pl-9 pr-3 py-1.5 text-sm bg-[#F8FAFC] dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8] dark:focus:border-[#60A5FA]"
+              className="w-full pl-9 pr-3 py-2 text-sm bg-[#F8FAFC] dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8] dark:focus:border-[#60A5FA]"
             />
           </div>
 
-          <div className="flex items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] rounded-md border border-[#E2E8F0] dark:border-[#1E293B]">
+          <div className="flex items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] rounded-md border border-[#E2E8F0] dark:border-[#1E293B] overflow-x-auto max-w-full">
             {(
               [
                 { key: 'all', label: 'All Roles' },
@@ -361,7 +361,7 @@ export function UserManagement({
                 key={opt.key}
                 type="button"
                 onClick={() => setRoleFilter(opt.key)}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
                   roleFilter === opt.key
                     ? 'bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] shadow-xs'
                     : 'text-[#475569] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
@@ -373,14 +373,14 @@ export function UserManagement({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
           <span className="text-xs text-[#64748B] dark:text-[#94A3B8] font-mono tabular-nums">
             {filteredUsers.length} of {users.length} accounts · {adminCount} admin
           </span>
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md transition-colors whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-4 py-2 min-h-[40px] text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md transition-colors whitespace-nowrap shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add User</span>
@@ -388,9 +388,90 @@ export function UserManagement({
         </div>
       </div>
 
-      {/* Users Resizable Table */}
+      {/* Users Cards (Mobile) & Resizable Table (Desktop) */}
       <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="md:hidden divide-y divide-[#E2E8F0] dark:divide-[#1E293B]">
+          {filteredUsers.length === 0 ? (
+            <div className="py-10 px-4 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+              No local user accounts match your filter.
+            </div>
+          ) : (
+            filteredUsers.map((u) => {
+              const isSelf = u.id === currentUser.id;
+              const roles = getUserRoles(u);
+              const isLastAdmin = roles.includes('admin') && adminCount <= 1;
+
+              return (
+                <div key={u.id} className="p-3.5 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] truncate">
+                          {u.name}
+                        </span>
+                        {isSelf && (
+                          <span className="font-mono text-[10px] text-[#1D4ED8] dark:text-[#60A5FA] shrink-0">
+                            (You)
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-mono text-xs text-[#475569] dark:text-[#94A3B8] truncate">
+                        {u.email}
+                      </div>
+                      {u.title && (
+                        <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8] truncate mt-0.5">
+                          {u.title}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {roles.map((r) => renderRoleBadge(r))}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[#F1F5F9] dark:border-[#1E293B]">
+                    <span className="font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8] tabular-nums">
+                      {formatAuditTimestamp(u.createdAt)}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(u)}
+                        className="inline-flex items-center justify-center min-h-[38px] min-w-[38px] text-[#475569] dark:text-[#94A3B8] hover:text-[#1D4ED8] dark:hover:text-[#60A5FA] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-md"
+                        title="Edit profile & roles"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResetUser(u);
+                          setNewPassword('');
+                        }}
+                        className="inline-flex items-center justify-center min-h-[38px] min-w-[38px] text-[#475569] dark:text-[#94A3B8] hover:text-[#D97706] dark:hover:text-[#FBBF24] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-md"
+                        title="Reset password"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isSelf || isLastAdmin}
+                        onClick={() => setDeletingUser(u)}
+                        className="inline-flex items-center justify-center min-h-[38px] min-w-[38px] text-[#475569] dark:text-[#94A3B8] hover:text-[#DC2626] dark:hover:text-[#F87171] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] disabled:opacity-35 rounded-md"
+                        title="Delete account"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full table-fixed text-left border-collapse">
             <thead>
               <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#0F172A] text-[11px] font-semibold text-[#475569] dark:text-[#94A3B8]">

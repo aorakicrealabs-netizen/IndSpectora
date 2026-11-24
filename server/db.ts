@@ -17,6 +17,8 @@ import type {
   CustomParameterType,
   CycleType,
   DependencyType,
+  DeveloperDatasetCounts,
+  DeveloperSettingsState,
   EntryEditHistoryItem,
   EntryVisualPin,
   FacilityArea,
@@ -25,6 +27,7 @@ import type {
   InspectionPhoto,
   InspectionPinResult,
   InspectionReport,
+  LandingTabPreference,
   LibraryItem,
   NotificationType,
   Project,
@@ -33,6 +36,7 @@ import type {
   ReportComment,
   ReportFootprint,
   ReportStatus,
+  TableDensity,
   TaskBlocker,
   TaskComment,
   TaskHistoryEntry,
@@ -41,7 +45,9 @@ import type {
   TourPageKey,
   User,
   UserNotification,
+  UserPreferences,
   UserRole,
+  WorkspaceDefaults,
 } from '../src/types.ts';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -197,6 +203,7 @@ export function initSchema(): void {
       cycle_type TEXT NOT NULL CHECK(cycle_type IN ('routine', 'yearly', 'eventual')),
       start_date TEXT NOT NULL,
       end_date TEXT NOT NULL,
+      use_wbs INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL
     );
 
@@ -434,6 +441,22 @@ export function initSchema(): void {
       summary TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS workspace_settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id TEXT PRIMARY KEY,
+      table_density TEXT NOT NULL CHECK(table_density IN ('comfortable', 'compact')) DEFAULT 'comfortable',
+      default_landing_tab TEXT NOT NULL CHECK(default_landing_tab IN ('dashboard', 'inspections', 'library', 'gantt')) DEFAULT 'dashboard',
+      toast_notifications INTEGER NOT NULL DEFAULT 1,
+      approval_alerts INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   const getTableSql = (name: string): string => {
@@ -482,6 +505,11 @@ export function initSchema(): void {
   const pinCols = db.prepare(`PRAGMA table_info(asset_pins)`).all() as { name: string }[];
   if (!pinCols.some((c) => c.name === 'linked_task_id')) {
     db.exec(`ALTER TABLE asset_pins ADD COLUMN linked_task_id TEXT`);
+  }
+
+  const projectCols = db.prepare(`PRAGMA table_info(projects)`).all() as { name: string }[];
+  if (!projectCols.some((c) => c.name === 'use_wbs')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN use_wbs INTEGER NOT NULL DEFAULT 1`);
   }
 
   if (needsUserRolesMigration || needsLibraryMigration || needsReportStatusMigration) {
@@ -595,6 +623,37 @@ export function initSchema(): void {
   }
   if (!db.prepare('SELECT id FROM users WHERE email = ?').get('inspector@indspectora.local')) {
     db.prepare('UPDATE users SET email = ? WHERE email = ?').run('inspector@indspectora.local', 'inspector@opsledger.local');
+  }
+
+  // Ensure every domain table carries non-destructive is_mock tagging
+  const mockTaggedTables = [
+    'users',
+    'facility_areas',
+    'library_items',
+    'asset_parameters',
+    'asset_pins',
+    'projects',
+    'project_tasks',
+    'task_blockers',
+    'task_history',
+    'task_comments',
+    'inspection_reports',
+    'inspection_entries',
+    'inspection_photos',
+    'inspection_pin_results',
+    'inspection_parameter_values',
+    'report_approval_steps',
+    'report_comments',
+    'report_footprints',
+    'entry_edit_history',
+    'user_notifications',
+    'activity_logs',
+  ];
+  for (const tbl of mockTaggedTables) {
+    const cols = db.prepare(`PRAGMA table_info(${tbl})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'is_mock')) {
+      db.exec(`ALTER TABLE ${tbl} ADD COLUMN is_mock INTEGER NOT NULL DEFAULT 0`);
+    }
   }
 }
 
@@ -718,6 +777,212 @@ export function createNotification(
      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
   ).run(notif.id, notif.userId, notif.type, notif.reportId, notif.reportNumber, notif.title, notif.message, notif.createdAt);
   return notif;
+}
+
+export const DEFAULT_USER_PREFERENCES: UserPreferences = {
+  tableDensity: 'comfortable',
+  defaultLandingTab: 'dashboard',
+  toastNotifications: true,
+  approvalAlerts: true,
+};
+
+export const DEFAULT_WORKSPACE_DEFAULTS: WorkspaceDefaults = {
+  organizationName: 'IndSpectora Operations',
+  defaultCycleType: 'routine',
+  defaultCriticality: 'medium',
+  defaultRequirePhoto: true,
+};
+
+export function getWorkspaceSetting(key: string): string | null {
+  const row = db.prepare(`SELECT value_json FROM workspace_settings WHERE key = ?`).get(key) as
+    | { value_json: string }
+    | undefined;
+  return row ? row.value_json : null;
+}
+
+export function setWorkspaceSetting(key: string, value: unknown): void {
+  db.prepare(
+    `INSERT INTO workspace_settings (key, value_json, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`
+  ).run(key, JSON.stringify(value), new Date().toISOString());
+}
+
+export function getWorkspaceSettingBoolean(key: string, fallback = false): boolean {
+  const raw = getWorkspaceSetting(key);
+  if (raw === null) return fallback;
+  try {
+    return Boolean(JSON.parse(raw));
+  } catch {
+    return raw === 'true';
+  }
+}
+
+export function getWorkspaceDefaults(): WorkspaceDefaults {
+  const raw = getWorkspaceSetting('workspace_defaults');
+  if (!raw) return { ...DEFAULT_WORKSPACE_DEFAULTS };
+  try {
+    const parsed = JSON.parse(raw) as Partial<WorkspaceDefaults>;
+    return {
+      organizationName:
+        typeof parsed.organizationName === 'string' && parsed.organizationName.trim()
+          ? parsed.organizationName.trim()
+          : DEFAULT_WORKSPACE_DEFAULTS.organizationName,
+      defaultCycleType:
+        parsed.defaultCycleType === 'routine' ||
+        parsed.defaultCycleType === 'yearly' ||
+        parsed.defaultCycleType === 'eventual'
+          ? parsed.defaultCycleType
+          : DEFAULT_WORKSPACE_DEFAULTS.defaultCycleType,
+      defaultCriticality:
+        parsed.defaultCriticality === 'low' ||
+        parsed.defaultCriticality === 'medium' ||
+        parsed.defaultCriticality === 'high'
+          ? parsed.defaultCriticality
+          : DEFAULT_WORKSPACE_DEFAULTS.defaultCriticality,
+      defaultRequirePhoto:
+        typeof parsed.defaultRequirePhoto === 'boolean'
+          ? parsed.defaultRequirePhoto
+          : DEFAULT_WORKSPACE_DEFAULTS.defaultRequirePhoto,
+    };
+  } catch {
+    return { ...DEFAULT_WORKSPACE_DEFAULTS };
+  }
+}
+
+export function setWorkspaceDefaults(input: Partial<WorkspaceDefaults>): WorkspaceDefaults {
+  const cur = getWorkspaceDefaults();
+  const next: WorkspaceDefaults = {
+    organizationName:
+      typeof input.organizationName === 'string' && input.organizationName.trim()
+        ? input.organizationName.trim().slice(0, 80)
+        : cur.organizationName,
+    defaultCycleType:
+      input.defaultCycleType === 'routine' ||
+      input.defaultCycleType === 'yearly' ||
+      input.defaultCycleType === 'eventual'
+        ? input.defaultCycleType
+        : cur.defaultCycleType,
+    defaultCriticality:
+      input.defaultCriticality === 'low' ||
+      input.defaultCriticality === 'medium' ||
+      input.defaultCriticality === 'high'
+        ? input.defaultCriticality
+        : cur.defaultCriticality,
+    defaultRequirePhoto:
+      typeof input.defaultRequirePhoto === 'boolean'
+        ? input.defaultRequirePhoto
+        : cur.defaultRequirePhoto,
+  };
+  setWorkspaceSetting('workspace_defaults', next);
+  return next;
+}
+
+export function getUserPreferences(userId?: string): UserPreferences {
+  if (!userId) return { ...DEFAULT_USER_PREFERENCES };
+  const row = db.prepare(`SELECT * FROM user_preferences WHERE user_id = ?`).get(userId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!row) return { ...DEFAULT_USER_PREFERENCES };
+  const density: TableDensity = row.table_density === 'compact' ? 'compact' : 'comfortable';
+  const landing: LandingTabPreference =
+    row.default_landing_tab === 'inspections' ||
+    row.default_landing_tab === 'library' ||
+    row.default_landing_tab === 'gantt'
+      ? (row.default_landing_tab as LandingTabPreference)
+      : 'dashboard';
+  return {
+    tableDensity: density,
+    defaultLandingTab: landing,
+    toastNotifications: Boolean(row.toast_notifications),
+    approvalAlerts: Boolean(row.approval_alerts),
+  };
+}
+
+export function setUserPreferences(
+  userId: string,
+  patch: Partial<UserPreferences>
+): UserPreferences {
+  const cur = getUserPreferences(userId);
+  const next: UserPreferences = {
+    tableDensity:
+      patch.tableDensity === 'compact' || patch.tableDensity === 'comfortable'
+        ? patch.tableDensity
+        : cur.tableDensity,
+    defaultLandingTab:
+      patch.defaultLandingTab === 'dashboard' ||
+      patch.defaultLandingTab === 'inspections' ||
+      patch.defaultLandingTab === 'library' ||
+      patch.defaultLandingTab === 'gantt'
+        ? patch.defaultLandingTab
+        : cur.defaultLandingTab,
+    toastNotifications:
+      typeof patch.toastNotifications === 'boolean'
+        ? patch.toastNotifications
+        : cur.toastNotifications,
+    approvalAlerts:
+      typeof patch.approvalAlerts === 'boolean' ? patch.approvalAlerts : cur.approvalAlerts,
+  };
+  db.prepare(
+    `INSERT INTO user_preferences (user_id, table_density, default_landing_tab, toast_notifications, approval_alerts, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       table_density = excluded.table_density,
+       default_landing_tab = excluded.default_landing_tab,
+       toast_notifications = excluded.toast_notifications,
+       approval_alerts = excluded.approval_alerts,
+       updated_at = excluded.updated_at`
+  ).run(
+    userId,
+    next.tableDensity,
+    next.defaultLandingTab,
+    next.toastNotifications ? 1 : 0,
+    next.approvalAlerts ? 1 : 0,
+    new Date().toISOString()
+  );
+  return next;
+}
+
+function countByMock(table: string): { manual: number; mock: number } {
+  const rows = db
+    .prepare(`SELECT COALESCE(is_mock, 0) AS is_mock, COUNT(*) AS cnt FROM ${table} GROUP BY COALESCE(is_mock, 0)`)
+    .all() as { is_mock: number; cnt: number }[];
+  let manual = 0;
+  let mock = 0;
+  for (const r of rows) {
+    if (Number(r.is_mock) === 1) mock += Number(r.cnt);
+    else manual += Number(r.cnt);
+  }
+  return { manual, mock };
+}
+
+export function getDeveloperSettingsState(): DeveloperSettingsState {
+  const zones = countByMock('facility_areas');
+  const assets = countByMock('library_items');
+  const projects = countByMock('projects');
+  const tasks = countByMock('project_tasks');
+  const reports = countByMock('inspection_reports');
+  const users = countByMock('users');
+
+  const counts: DeveloperDatasetCounts = {
+    manualZones: zones.manual,
+    mockZones: zones.mock,
+    manualAssets: assets.manual,
+    mockAssets: assets.mock,
+    manualProjects: projects.manual,
+    mockProjects: projects.mock,
+    manualTasks: tasks.manual,
+    mockTasks: tasks.mock,
+    manualReports: reports.manual,
+    mockReports: reports.mock,
+    manualUsers: users.manual,
+    mockUsers: users.mock,
+  };
+
+  return {
+    developerMode: getWorkspaceSettingBoolean('developer_mode', false),
+    mockDataEnabled: getWorkspaceSettingBoolean('mock_data_enabled', false),
+    counts,
+  };
 }
 
 export function getFullReportById(reportId: string): InspectionReport | null {
@@ -961,6 +1226,7 @@ export function getFullReportById(reportId: string): InspectionReport | null {
     approvalSteps,
     comments: allReportComments.filter((c) => c.entryId === null),
     footprints,
+    isMock: Boolean(row.is_mock),
   };
 }
 
@@ -1041,6 +1307,7 @@ export function getBootstrapData(userId?: string): BootstrapPayload {
       riskLevel: String(r.risk_level) as CriticalityLevel,
       description: String(r.description),
       isActive: Boolean(r.is_active),
+      isMock: Boolean(r.is_mock),
       updatedAt: String(r.updated_at),
     })
   );
@@ -1071,6 +1338,7 @@ export function getBootstrapData(userId?: string): BootstrapPayload {
       drawingUrl: r.drawing_url ? String(r.drawing_url) : null,
       pins: pinsByAsset.get(String(r.id)) ?? [],
       parameters: paramsByAsset.get(String(r.id)) ?? [],
+      isMock: Boolean(r.is_mock),
       updatedAt: String(r.updated_at),
     };
   });
@@ -1094,13 +1362,14 @@ export function getBootstrapData(userId?: string): BootstrapPayload {
       cycleType: String(r.cycle_type) as CycleType,
       startDate: String(r.start_date),
       endDate: String(r.end_date),
+      useWbs: r.use_wbs === undefined || r.use_wbs === null ? true : Boolean(r.use_wbs),
       createdAt: String(r.created_at),
     })
   );
 
   const users = (
     db
-      .prepare(`SELECT id, name, email, role, roles_json, title, created_at FROM users ORDER BY name ASC`)
+      .prepare(`SELECT id, name, email, role, roles_json, title, is_mock, created_at FROM users ORDER BY name ASC`)
       .all() as Record<string, unknown>[]
   ).map(mapUserRow);
   const userById = new Map(users.map((u) => [u.id, u]));
@@ -1127,6 +1396,7 @@ export function getBootstrapData(userId?: string): BootstrapPayload {
       linkedCycle: String(r.linked_cycle) as CycleType | 'none',
       notes: String(r.notes),
       sortOrder: Number(r.sort_order),
+      isMock: Boolean(r.is_mock),
       updatedAt: String(r.updated_at),
     };
   });
@@ -1230,6 +1500,9 @@ export function getBootstrapData(userId?: string): BootstrapPayload {
     users,
     notifications,
     completedTours,
+    userPreferences: getUserPreferences(userId),
+    workspaceDefaults: getWorkspaceDefaults(),
+    developerState: getDeveloperSettingsState(),
   };
 }
 
@@ -1242,6 +1515,7 @@ export function mapUserRow(row: Record<string, unknown>): User {
     role: getPrimaryRole(roles),
     roles,
     title: String(row.title ?? ''),
+    isMock: Boolean(row.is_mock),
     createdAt: String(row.created_at),
   };
 }

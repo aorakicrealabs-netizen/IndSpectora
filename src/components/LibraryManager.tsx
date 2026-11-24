@@ -26,6 +26,7 @@ import type {
   Project,
   ProjectTask,
   User,
+  WorkspaceDefaults,
 } from '../types.ts';
 import { hasAnyRole } from '../types.ts';
 import {
@@ -56,8 +57,10 @@ interface LibraryManagerProps {
   onNotify: (message: string, kind?: 'info' | 'error') => void;
   onNavigateToTask?: (projectId: string, taskId: string) => void;
   onOpenReport?: (reportId: string) => void;
+  onOpenAssetHistory?: (assetId: string) => void;
   initialVisualAssetId?: string | null;
   onClearInitialVisualAsset?: () => void;
+  workspaceDefaults?: WorkspaceDefaults;
 }
 
 type LibrarySubTab = 'items' | 'facilities';
@@ -126,8 +129,10 @@ export function LibraryManager({
   onNotify,
   onNavigateToTask,
   onOpenReport,
+  onOpenAssetHistory,
   initialVisualAssetId,
   onClearInitialVisualAsset,
+  workspaceDefaults,
 }: LibraryManagerProps) {
   const [subTab, setSubTab] = useState<LibrarySubTab>('items');
 
@@ -371,6 +376,8 @@ export function LibraryManager({
       ...EMPTY_ITEM_FORM,
       code: `AST-${String(items.length + 1).padStart(2, '0')}`,
       facilityAreaId: defaultFacId,
+      criticality: workspaceDefaults?.defaultCriticality ?? 'medium',
+      requirePhoto: workspaceDefaults?.defaultRequirePhoto ?? true,
       parameters: [],
     });
     setShowItemModal(true);
@@ -1007,8 +1014,121 @@ export function LibraryManager({
             </div>
           </div>
 
-          {/* Assets Resizable Table */}
-          <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
+          {/* Assets Compact Mobile Card View (< md) */}
+          <div className="md:hidden space-y-2.5">
+            {filteredItems.length === 0 ? (
+              <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl p-8 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                No assets match your filters.
+              </div>
+            ) : (
+              filteredItems.map((item) => {
+                const pinCount = item.pins?.length ?? 0;
+                const paramCount = item.parameters?.length ?? 0;
+                const hasDrawing = Boolean(item.drawingUrl);
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl p-3.5 space-y-2.5 ${
+                      !item.isActive ? 'opacity-65' : ''
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="font-mono font-bold text-[#1D4ED8] dark:text-[#60A5FA]">
+                            {item.code}
+                          </span>
+                          <span className="text-[#64748B] dark:text-[#94A3B8] truncate">
+                            {item.category}
+                          </span>
+                        </div>
+                        <div className="font-semibold text-sm text-[#0F172A] dark:text-[#F8FAFC] mt-0.5">
+                          {item.title}
+                        </div>
+                      </div>
+                      <span
+                        className={`text-xs font-semibold capitalize shrink-0 ${
+                          item.criticality === 'high'
+                            ? 'text-[#DC2626] dark:text-[#F87171]'
+                            : item.criticality === 'medium'
+                            ? 'text-[#D97706] dark:text-[#FBBF24]'
+                            : 'text-[#475569] dark:text-[#94A3B8]'
+                        }`}
+                      >
+                        {item.criticality}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                      <span>{item.facilityAreaName || 'Unassigned Zone'}</span>
+                      <span>·</span>
+                      <span className="font-mono">{paramCount} params</span>
+                      <span>·</span>
+                      <span
+                        className={
+                          item.isActive
+                            ? 'text-[#16A34A] dark:text-[#4ADE80] font-medium'
+                            : 'text-[#64748B] dark:text-[#94A3B8]'
+                        }
+                      >
+                        {item.isActive ? 'Active' : 'Archived'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#F1F5F9] dark:border-[#1E293B]">
+                      <button
+                        type="button"
+                        onClick={() => setVisualAssetId(item.id)}
+                        className="min-h-[40px] inline-flex items-center gap-1.5 px-2.5 text-xs font-medium text-[#1D4ED8] dark:text-[#60A5FA] bg-[#EFF6FF] dark:bg-[#1E3A8A]/30 rounded-lg"
+                      >
+                        <MapPin className="w-3.5 h-3.5 shrink-0" />
+                        <span>{hasDrawing ? `Map (${pinCount})` : 'Visual Map'}</span>
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onOpenAssetHistory
+                              ? onOpenAssetHistory(item.id)
+                              : setHistoryAssetId(item.id)
+                          }
+                          className="min-h-[40px] inline-flex items-center gap-1 px-2.5 text-xs font-medium text-[#334155] dark:text-[#CBD5E1] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-lg"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                          <span>History</span>
+                        </button>
+                        {canEdit && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEditItemModal(item)}
+                              aria-label="Edit asset"
+                              className="min-h-[40px] min-w-[40px] flex items-center justify-center text-[#475569] dark:text-[#94A3B8] hover:text-[#1D4ED8] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-lg"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteItem(item)}
+                              aria-label="Delete asset"
+                              className="min-h-[40px] min-w-[40px] flex items-center justify-center text-[#DC2626] dark:text-[#F87171] bg-[#FEF2F2] dark:bg-[#7F1D1D]/25 border border-[#FECACA] dark:border-[#991B1B] rounded-lg"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Assets Resizable Table (Desktop & Tablet) */}
+          <div className="hidden md:block bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-left border-collapse">
                 <thead>
@@ -1239,8 +1359,12 @@ export function LibraryManager({
                             <div className="inline-flex items-center gap-1">
                               <button
                                 type="button"
-                                onClick={() => setHistoryAssetId(item.id)}
-                                title="View Asset Inspection History"
+                                onClick={() =>
+                                  onOpenAssetHistory
+                                    ? onOpenAssetHistory(item.id)
+                                    : setHistoryAssetId(item.id)
+                                }
+                                title="Open Asset Inspection History & Compare"
                                 className="p-1.5 text-[#475569] dark:text-[#94A3B8] hover:text-[#1D4ED8] dark:hover:text-[#60A5FA] hover:bg-[#EFF6FF] dark:hover:bg-[#1E3A8A]/30 rounded transition-colors"
                               >
                                 <History className="w-3.5 h-3.5" />
@@ -1338,8 +1462,84 @@ export function LibraryManager({
             </div>
           </div>
 
+          {/* Facility / Zone Compact Mobile Cards (< md) */}
+          <div className="md:hidden space-y-2.5">
+            {filteredFacilities.length === 0 ? (
+              <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl p-8 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                No facility zones match your filters.
+              </div>
+            ) : (
+              filteredFacilities.map((fac) => (
+                <div
+                  key={fac.id}
+                  className={`bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl p-3.5 space-y-2 ${
+                    !fac.isActive ? 'opacity-65' : ''
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-mono text-xs font-bold text-[#1D4ED8] dark:text-[#60A5FA]">
+                        {fac.code}
+                      </span>
+                      <div className="font-semibold text-sm text-[#0F172A] dark:text-[#F8FAFC]">
+                        {fac.name}
+                      </div>
+                      {fac.building && (
+                        <div className="text-xs text-[#64748B] dark:text-[#94A3B8]">
+                          {fac.building}
+                        </div>
+                      )}
+                    </div>
+                    <span
+                      className={`text-xs font-semibold capitalize shrink-0 ${
+                        fac.riskLevel === 'high'
+                          ? 'text-[#DC2626] dark:text-[#F87171]'
+                          : fac.riskLevel === 'medium'
+                          ? 'text-[#D97706] dark:text-[#FBBF24]'
+                          : 'text-[#475569] dark:text-[#94A3B8]'
+                      }`}
+                    >
+                      {fac.riskLevel} Risk
+                    </span>
+                  </div>
+                  {canEdit && (
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#F1F5F9] dark:border-[#1E293B]">
+                      <button
+                        type="button"
+                        onClick={() => toggleFacilityActive(fac)}
+                        className={`min-h-[38px] text-xs font-medium ${
+                          fac.isActive
+                            ? 'text-[#16A34A] dark:text-[#4ADE80]'
+                            : 'text-[#64748B] dark:text-[#94A3B8]'
+                        }`}
+                      >
+                        {fac.isActive ? 'Active' : 'Archived'}
+                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openEditFacilityModal(fac)}
+                          className="min-h-[40px] min-w-[40px] flex items-center justify-center text-[#475569] dark:text-[#94A3B8] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-lg"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFacility(fac)}
+                          className="min-h-[40px] min-w-[40px] flex items-center justify-center text-[#DC2626] dark:text-[#F87171] bg-[#FEF2F2] dark:bg-[#7F1D1D]/25 border border-[#FECACA] dark:border-[#991B1B] rounded-lg"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
           {/* Facility / Zone Resizable Table */}
-          <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
+          <div className="hidden md:block bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-left border-collapse">
                 <thead>

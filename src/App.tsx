@@ -10,17 +10,20 @@ import {
   CheckCheck,
   ClipboardCheck,
   GanttChartSquare,
+  History,
   LayoutDashboard,
   LogOut,
-  Menu,
   Moon,
+  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
+  Settings,
   Sun,
-  Users,
   X,
 } from 'lucide-react';
 import { AdminDashboard } from './components/AdminDashboard.tsx';
+import { AssetHistoryPage } from './components/AssetHistoryPage.tsx';
 import { AuthGate } from './components/AuthGate.tsx';
 import { GanttMonitoring } from './components/GanttMonitoring.tsx';
 import { HowToUsePage } from './components/HowToUsePage.tsx';
@@ -30,7 +33,7 @@ import {
 } from './components/InspectionWorkspace.tsx';
 import { LibraryManager } from './components/LibraryManager.tsx';
 import { PageTourOverlay } from './components/PageTourOverlay.tsx';
-import { UserManagement } from './components/UserManagement.tsx';
+import { SettingsPage, type SettingsSection } from './components/SettingsPage.tsx';
 import type {
   BootstrapPayload,
   RealtimeMessage,
@@ -41,7 +44,7 @@ import type {
 import { formatRoleLabel, hasAnyRole } from './types.ts';
 import { formatDateTime } from './utils/export.ts';
 
-type ActiveTab = TourPageKey;
+type ActiveTab = Exclude<TourPageKey, 'users'>;
 type ThemeMode = 'light' | 'dark';
 
 const TOKEN_STORAGE_KEY = 'indspectora_session_token';
@@ -59,7 +62,7 @@ export default function App() {
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string>(new Date().toISOString());
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
       return (
@@ -81,6 +84,7 @@ export default function App() {
   });
   const [focusTask, setFocusTask] = useState<{ projectId: string; taskId: string } | null>(null);
   const [focusAssetId, setFocusAssetId] = useState<string | null>(null);
+  const [focusHistoryAssetId, setFocusHistoryAssetId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: 'info' | 'error' } | null>(null);
 
   // Notifications & First-Time Tour state
@@ -90,6 +94,13 @@ export default function App() {
     () => new Set()
   );
   const [forcedTourPage, setForcedTourPage] = useState<TourPageKey | null>(null);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('profile');
+  const appliedLandingForUserRef = useRef<string | null>(null);
+  const toastNotificationsRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    toastNotificationsRef.current = data?.userPreferences?.toastNotifications ?? true;
+  }, [data?.userPreferences?.toastNotifications]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -99,6 +110,21 @@ export default function App() {
       // Ignore storage quota errors
     }
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.density =
+      data?.userPreferences?.tableDensity ?? 'comfortable';
+  }, [data?.userPreferences?.tableDensity]);
+
+  useEffect(() => {
+    if (!user || !data) return;
+    if (appliedLandingForUserRef.current === user.id) return;
+    appliedLandingForUserRef.current = user.id;
+    const preferred = data.userPreferences?.defaultLandingTab;
+    if (preferred) {
+      setActiveTab(preferred);
+    }
+  }, [user, data]);
 
   useEffect(() => {
     if (!showNotifications) return;
@@ -221,7 +247,7 @@ export default function App() {
             fetchBootstrap(token!);
             const isRelevantToUser =
               !msg.targetUserId || msg.targetUserId === user!.id;
-            if (msg.summary && isRelevantToUser) {
+            if (msg.summary && isRelevantToUser && toastNotificationsRef.current) {
               notify(msg.summary, 'info');
             }
           }
@@ -251,19 +277,14 @@ export default function App() {
     };
   }, [token, user, fetchBootstrap, notify]);
 
-  // Keep activeTab valid if role changes or user is non-admin
-  useEffect(() => {
-    if (user && !hasAnyRole(user, 'admin') && activeTab === 'users') {
-      setActiveTab('dashboard');
-    }
-  }, [user, activeTab]);
-
   function handleAuthenticated(nextToken: string, nextUser: User) {
     localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+    appliedLandingForUserRef.current = null;
     setToken(nextToken);
     setUser(nextUser);
     setTourDismissedSession(new Set());
     setForcedTourPage(null);
+    setSettingsSection('profile');
     fetchBootstrap(nextToken);
   }
 
@@ -275,6 +296,7 @@ export default function App() {
       }).catch(() => {});
     }
     localStorage.removeItem(TOKEN_STORAGE_KEY);
+    appliedLandingForUserRef.current = null;
     setToken(null);
     setUser(null);
     setData(null);
@@ -409,29 +431,54 @@ export default function App() {
   const navItems: {
     key: ActiveTab;
     label: string;
+    mobileLabel: string;
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
-    { key: 'dashboard', label: 'Operations Dashboard', icon: LayoutDashboard },
-    { key: 'inspections', label: 'Inspections & Audits', icon: ClipboardCheck },
-    { key: 'library', label: 'Asset Library', icon: BookOpenCheck },
-    { key: 'gantt', label: 'Projects', icon: GanttChartSquare },
-    ...(isAdmin
-      ? [{ key: 'users' as const, label: 'User Management', icon: Users }]
-      : []),
-    { key: 'howto', label: 'How to Use', icon: BookOpen },
+    { key: 'dashboard', label: 'Operations Dashboard', mobileLabel: 'Dashboard', icon: LayoutDashboard },
+    { key: 'inspections', label: 'Inspections & Audits', mobileLabel: 'Inspect', icon: ClipboardCheck },
+    { key: 'gantt', label: 'Projects', mobileLabel: 'Projects', icon: GanttChartSquare },
+    { key: 'history', label: 'Asset History', mobileLabel: 'History', icon: History },
+    { key: 'library', label: 'Asset Library', mobileLabel: 'Library', icon: BookOpenCheck },
+    { key: 'settings', label: 'Settings', mobileLabel: 'Settings', icon: Settings },
+    { key: 'howto', label: 'How to Use', mobileLabel: 'Guide', icon: BookOpen },
   ];
+
+  const mobilePrimaryTabs: ActiveTab[] = ['dashboard', 'inspections', 'gantt', 'history'];
+  const mobileSecondaryActive =
+    activeTab === 'library' || activeTab === 'settings' || activeTab === 'howto';
+
+  const workspaceTitle = data?.workspaceDefaults?.organizationName || 'Operations';
+
+  const activeMobileTitle =
+    activeTab === 'dashboard'
+      ? 'Dashboard'
+      : activeTab === 'inspections'
+      ? selectedReportId
+        ? 'Audit Sheet'
+        : 'Inspections'
+      : activeTab === 'gantt'
+      ? 'Projects'
+      : activeTab === 'history'
+      ? 'Asset History'
+      : activeTab === 'library'
+      ? 'Asset Library'
+      : activeTab === 'settings'
+      ? 'Settings'
+      : 'How to Use';
 
   const activeBreadcrumb =
     activeTab === 'dashboard'
-      ? 'Operations / Live Dashboard & Need My Action'
+      ? `${workspaceTitle} / Live Dashboard & Need My Action`
       : activeTab === 'library'
-      ? 'Operations / Asset & Facility Library'
+      ? `${workspaceTitle} / Asset & Facility Library`
+      : activeTab === 'history'
+      ? `${workspaceTitle} / Asset Inspection History & Compare`
       : activeTab === 'inspections'
       ? selectedReportId
-        ? 'Operations / Inspections / Audit Sheet'
-        : 'Operations / Routine, Yearly & Eventual Inspections'
-      : activeTab === 'users'
-      ? 'Administration / User Management'
+        ? `${workspaceTitle} / Inspections / Audit Sheet`
+        : `${workspaceTitle} / Routine, Yearly & Eventual Inspections`
+      : activeTab === 'settings'
+      ? 'Workspace / Settings, Preferences & Administration'
       : activeTab === 'howto'
       ? 'Knowledge Base / How to Use & Guided Tours'
       : 'Projects / Active Project & Blockers';
@@ -450,31 +497,36 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B1120] text-[#0F172A] dark:text-[#F8FAFC] flex">
-      {/* Sidebar (256px expanded / 64px collapsed icon rail on desktop, slide-over mobile) */}
+      {/* Desktop Sidebar (256px expanded / 64px collapsed icon rail; mobile uses fixed Bottom Nav Bar) */}
       <aside
-        className={`no-print fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-[#111827] border-r border-[#E2E8F0] dark:border-[#1E293B] flex flex-col justify-between transition-all duration-200 lg:static lg:translate-x-0 shrink-0 ${
-          sidebarCollapsed ? 'lg:w-16' : 'lg:w-64'
-        } ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`no-print hidden lg:flex sticky top-0 h-screen bg-white dark:bg-[#111827] border-r border-[#E2E8F0] dark:border-[#1E293B] flex-col justify-between transition-all duration-200 shrink-0 ${
+          sidebarCollapsed ? 'w-16' : 'w-64'
+        }`}
       >
         <div>
           <div
             className={`h-14 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center ${
-              sidebarCollapsed ? 'lg:justify-center lg:px-2 px-5 justify-between' : 'px-5 justify-between'
+              sidebarCollapsed ? 'justify-center px-2 gap-1' : 'px-4 justify-between gap-2'
             }`}
           >
-            <span
-              className={`font-display text-lg font-bold tracking-tight text-[#0F172A] dark:text-[#F8FAFC] whitespace-nowrap ${
-                sidebarCollapsed ? 'lg:hidden' : ''
-              }`}
-            >
-              IndSpectora
-            </span>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <img
+                src="/assets/aistudio/Gemini_Generated_Image_blqe01blqe01blqe_2a407c6c.jpg"
+                alt="IndSpectora logo"
+                className="w-8 h-8 rounded-lg object-cover border border-[#E2E8F0] dark:border-[#334155] shrink-0"
+              />
+              {!sidebarCollapsed && (
+                <span className="font-display text-lg font-bold tracking-tight text-[#0F172A] dark:text-[#F8FAFC] whitespace-nowrap truncate">
+                  IndSpectora
+                </span>
+              )}
+            </div>
 
             <button
               type="button"
               onClick={toggleSidebarCollapse}
               title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="hidden lg:inline-flex items-center justify-center p-1.5 text-[#475569] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] rounded-md transition-colors"
+              className="inline-flex items-center justify-center p-1.5 text-[#475569] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] rounded-md transition-colors shrink-0"
             >
               {sidebarCollapsed ? (
                 <PanelLeftOpen className="w-4 h-4" />
@@ -482,17 +534,9 @@ export default function App() {
                 <PanelLeftClose className="w-4 h-4" />
               )}
             </button>
-
-            <button
-              type="button"
-              onClick={() => setMobileNavOpen(false)}
-              className="lg:hidden p-1 text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </div>
 
-          <nav className={sidebarCollapsed ? 'lg:p-2 p-3 space-y-1' : 'p-3 space-y-1'}>
+          <nav className={sidebarCollapsed ? 'p-2 space-y-1' : 'p-3 space-y-1'}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = activeTab === item.key;
@@ -504,11 +548,10 @@ export default function App() {
                   onClick={() => {
                     setActiveTab(item.key);
                     if (item.key !== 'inspections') setSelectedReportId(null);
-                    setMobileNavOpen(false);
                   }}
                   className={`relative w-full flex items-center text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     sidebarCollapsed
-                      ? 'lg:justify-center lg:px-0 lg:py-2.5 justify-between px-3 py-2.5'
+                      ? 'justify-center px-0 py-2.5'
                       : 'justify-between px-3 py-2.5'
                   } ${
                     active
@@ -518,14 +561,14 @@ export default function App() {
                 >
                   <span className="flex items-center gap-2.5">
                     <Icon className="w-4 h-4 shrink-0" />
-                    <span className={sidebarCollapsed ? 'lg:hidden' : ''}>{item.label}</span>
+                    {!sidebarCollapsed && <span>{item.label}</span>}
                   </span>
 
                   {item.key === 'inspections' && needMyActionCount > 0 && (
                     <span
                       className={`inline-flex items-center justify-center rounded font-mono tabular-nums font-bold ${
                         sidebarCollapsed
-                          ? 'lg:absolute lg:top-1 lg:right-1 lg:px-1 lg:text-[9px] bg-[#DC2626] text-white'
+                          ? 'absolute top-1 right-1 px-1 text-[9px] bg-[#DC2626] text-white'
                           : 'px-1.5 py-0.5 text-[10px] bg-[#DC2626] text-white'
                       }`}
                     >
@@ -537,7 +580,7 @@ export default function App() {
                     <span
                       className={`font-mono text-[11px] text-[#DC2626] dark:text-[#F87171] tabular-nums ${
                         sidebarCollapsed
-                          ? 'lg:absolute lg:top-1 lg:right-1.5 lg:text-[9px] lg:font-bold'
+                          ? 'absolute top-1 right-1.5 text-[9px] font-bold'
                           : ''
                       }`}
                     >
@@ -552,26 +595,28 @@ export default function App() {
 
         <div
           className={`border-t border-[#E2E8F0] dark:border-[#1E293B] space-y-2.5 ${
-            sidebarCollapsed ? 'lg:p-2 p-4' : 'p-4'
+            sidebarCollapsed ? 'p-2' : 'p-4'
           }`}
         >
-          <div className={`text-xs ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
-            <div className="font-semibold text-[#0F172A] dark:text-[#F8FAFC] truncate">
-              {user.name}
+          {!sidebarCollapsed && (
+            <div className="text-xs">
+              <div className="font-semibold text-[#0F172A] dark:text-[#F8FAFC] truncate">
+                {user.name}
+              </div>
+              <div className="text-[#64748B] dark:text-[#94A3B8] truncate">
+                {user.title || 'Operations Member'}
+                <span aria-hidden="true"> · </span>
+                <span>{userRoleLabels}</span>
+              </div>
             </div>
-            <div className="text-[#64748B] dark:text-[#94A3B8] truncate">
-              {user.title || 'Operations Member'}
-              <span aria-hidden="true"> · </span>
-              <span>{userRoleLabels}</span>
-            </div>
-          </div>
+          )}
 
           <button
             type="button"
             title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             onClick={toggleTheme}
             className={`w-full inline-flex items-center justify-center gap-2 py-2 text-xs font-medium text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#E2E8F0] dark:border-[#334155] rounded-md transition-colors ${
-              sidebarCollapsed ? 'lg:px-0 px-3' : 'px-3'
+              sidebarCollapsed ? 'px-0' : 'px-3'
             }`}
           >
             {theme === 'dark' ? (
@@ -579,9 +624,9 @@ export default function App() {
             ) : (
               <Moon className="w-3.5 h-3.5 shrink-0" />
             )}
-            <span className={sidebarCollapsed ? 'lg:hidden' : ''}>
-              {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-            </span>
+            {!sidebarCollapsed && (
+              <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
+            )}
           </button>
 
           <button
@@ -589,41 +634,55 @@ export default function App() {
             title="Sign Out"
             onClick={handleLogout}
             className={`w-full inline-flex items-center justify-center gap-2 py-2 text-xs font-medium text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#E2E8F0] dark:border-[#334155] rounded-md transition-colors ${
-              sidebarCollapsed ? 'lg:px-0 px-3' : 'px-3'
+              sidebarCollapsed ? 'px-0' : 'px-3'
             }`}
           >
             <LogOut className="w-3.5 h-3.5 shrink-0" />
-            <span className={sidebarCollapsed ? 'lg:hidden' : ''}>Sign Out</span>
+            {!sidebarCollapsed && <span>Sign Out</span>}
           </button>
 
-          <div
-            className={`pt-0.5 text-[10px] tracking-wide text-[#64748B] dark:text-[#94A3B8] opacity-35 hover:opacity-85 transition-opacity duration-200 select-none ${
-              sidebarCollapsed ? 'lg:hidden' : ''
-            }`}
-          >
-            Created by Aoraki CreaLabs
-          </div>
+          {!sidebarCollapsed && (
+            <div className="pt-0.5 text-[10px] tracking-wide text-[#64748B] dark:text-[#94A3B8] opacity-35 hover:opacity-85 transition-opacity duration-200 select-none">
+              Created by Aoraki CreaLabs
+            </div>
+          )}
         </div>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Top Bar (3-zone contract) */}
-        <header className="no-print h-14 bg-white dark:bg-[#111827] border-b border-[#E2E8F0] dark:border-[#1E293B] px-6 flex items-center justify-between gap-6 shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              type="button"
-              onClick={() => setMobileNavOpen(true)}
-              className="lg:hidden p-1.5 text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] border border-[#E2E8F0] dark:border-[#334155] rounded"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-medium text-[#475569] dark:text-[#94A3B8] truncate">
+        {/* Sticky Compact Mobile Bar (52px) + Desktop Top Bar (56px) */}
+        <header className="no-print sticky top-0 lg:static z-30 h-[52px] lg:h-14 bg-white/95 lg:bg-white dark:bg-[#111827]/95 lg:dark:bg-[#111827] backdrop-blur-md lg:backdrop-blur-none border-b border-[#E2E8F0] dark:border-[#1E293B] px-3.5 sm:px-6 flex items-center justify-between gap-3 sm:gap-6 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src="/assets/aistudio/Gemini_Generated_Image_blqe01blqe01blqe_2a407c6c.jpg"
+              alt="IndSpectora"
+              className="lg:hidden w-7 h-7 rounded-lg object-cover border border-[#E2E8F0] dark:border-[#334155] shrink-0"
+            />
+            <span className="lg:hidden font-display text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC] truncate">
+              {activeMobileTitle}
+            </span>
+            <span className="hidden lg:inline text-xs font-medium text-[#475569] dark:text-[#94A3B8] truncate">
               {activeBreadcrumb}
             </span>
           </div>
 
           <div className="hidden md:flex items-center gap-6 text-xs font-medium text-[#475569] dark:text-[#94A3B8] shrink-0">
+            {data?.developerState?.mockDataEnabled && isAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsSection('developer');
+                    setActiveTab('settings');
+                  }}
+                  className="font-mono text-[11px] font-semibold text-[#D97706] dark:text-[#FBBF24] hover:underline whitespace-nowrap"
+                >
+                  Mock Data Active
+                </button>
+                <span aria-hidden="true" className="text-[#CBD5E1] dark:text-[#334155]">|</span>
+              </>
+            )}
             <span className="whitespace-nowrap">
               {wsConnected ? (
                 <span className="text-[#16A34A] dark:text-[#4ADE80]">Real-Time Sync Connected</span>
@@ -637,14 +696,14 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Notification Bell + Dropdown */}
             <div ref={notifContainerRef} className="relative">
               <button
                 type="button"
                 onClick={() => setShowNotifications((v) => !v)}
                 title="Approval & Revision Notifications"
-                className="relative p-1.5 text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#E2E8F0] dark:border-[#334155] rounded-md transition-colors"
+                className="relative min-h-[40px] min-w-[40px] lg:min-h-0 lg:min-w-0 lg:p-1.5 flex items-center justify-center text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#E2E8F0] dark:border-[#334155] rounded-lg lg:rounded-md transition-colors"
               >
                 <Bell className="w-4 h-4" />
                 {unreadCount > 0 && (
@@ -655,7 +714,7 @@ export default function App() {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-lg shadow-xl z-50 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-[calc(100vw-24px)] max-w-80 sm:w-96 bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-xl lg:rounded-lg shadow-xl z-50 overflow-hidden">
                   <div className="px-4 py-3 bg-[#F8FAFC] dark:bg-[#0F172A] border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between gap-2">
                     <div className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
                       Notifications ({notifications.length})
@@ -721,7 +780,7 @@ export default function App() {
               type="button"
               onClick={toggleTheme}
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              className="p-1.5 text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#E2E8F0] dark:border-[#334155] rounded-md transition-colors"
+              className="hidden lg:inline-flex p-1.5 text-[#475569] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#E2E8F0] dark:border-[#334155] rounded-md transition-colors"
             >
               {theme === 'dark' ? (
                 <Sun className="w-4 h-4 text-[#FBBF24]" />
@@ -735,15 +794,17 @@ export default function App() {
                 setActiveTab('inspections');
                 setSelectedReportId(null);
               }}
-              className="px-3.5 py-1.5 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md transition-colors whitespace-nowrap shrink-0"
+              className="min-h-[40px] lg:min-h-0 inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-lg lg:rounded-md transition-colors whitespace-nowrap shrink-0"
             >
-              New Inspection
+              <Plus className="w-3.5 h-3.5 lg:hidden" />
+              <span className="sm:hidden">Inspect</span>
+              <span className="hidden sm:inline">New Inspection</span>
             </button>
           </div>
         </header>
 
         {/* Workspace Viewport */}
-        <main className="flex-1 p-6 max-w-[1440px] w-full mx-auto">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-6 pb-24 lg:pb-6 max-w-[1440px] w-full mx-auto">
           {!data && loadingData ? (
             <div className="space-y-4">
               <div className="h-24 bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg animate-pulse" />
@@ -764,31 +825,14 @@ export default function App() {
                     setSelectedReportId(reportId);
                     setActiveTab('inspections');
                   }}
-                  onNavigateTab={(tab) => setActiveTab(tab)}
-                />
-              )}
-
-              {activeTab === 'library' && (
-                <LibraryManager
-                  items={data.libraryItems}
-                  facilityAreas={data.facilityAreas ?? []}
-                  projects={data.projects}
-                  tasks={data.tasks}
-                  reports={data.reports}
-                  currentUser={user}
-                  token={token}
-                  onSyncComplete={() => fetchBootstrap(token)}
-                  onNotify={notify}
-                  onNavigateToTask={(projectId, taskId) => {
-                    setFocusTask({ projectId, taskId });
-                    setActiveTab('gantt');
+                  onNavigateTab={(tab) => {
+                    if (tab === 'users') {
+                      setSettingsSection('accounts');
+                      setActiveTab('settings');
+                      return;
+                    }
+                    setActiveTab(tab);
                   }}
-                  onOpenReport={(reportId) => {
-                    setSelectedReportId(reportId);
-                    setActiveTab('inspections');
-                  }}
-                  initialVisualAssetId={focusAssetId}
-                  onClearInitialVisualAsset={() => setFocusAssetId(null)}
                 />
               )}
 
@@ -808,6 +852,7 @@ export default function App() {
                     setFocusTask({ projectId, taskId });
                     setActiveTab('gantt');
                   }}
+                  workspaceDefaults={data.workspaceDefaults}
                 />
               )}
 
@@ -833,13 +878,71 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'users' && isAdmin && (
-                <UserManagement
-                  users={data.users ?? []}
+              {activeTab === 'history' && (
+                <AssetHistoryPage
+                  libraryItems={data.libraryItems}
+                  facilityAreas={data.facilityAreas ?? []}
+                  reports={data.reports}
+                  initialAssetId={focusHistoryAssetId}
+                  onClearInitialAsset={() => setFocusHistoryAssetId(null)}
+                  onOpenReport={(reportId) => {
+                    setSelectedReportId(reportId);
+                    setActiveTab('inspections');
+                  }}
+                />
+              )}
+
+              {activeTab === 'library' && (
+                <LibraryManager
+                  items={data.libraryItems}
+                  facilityAreas={data.facilityAreas ?? []}
+                  projects={data.projects}
+                  tasks={data.tasks}
+                  reports={data.reports}
                   currentUser={user}
                   token={token}
                   onSyncComplete={() => fetchBootstrap(token)}
                   onNotify={notify}
+                  onNavigateToTask={(projectId, taskId) => {
+                    setFocusTask({ projectId, taskId });
+                    setActiveTab('gantt');
+                  }}
+                  onOpenReport={(reportId) => {
+                    setSelectedReportId(reportId);
+                    setActiveTab('inspections');
+                  }}
+                  onOpenAssetHistory={(assetId) => {
+                    setFocusHistoryAssetId(assetId);
+                    setActiveTab('history');
+                  }}
+                  initialVisualAssetId={focusAssetId}
+                  onClearInitialVisualAsset={() => setFocusAssetId(null)}
+                  workspaceDefaults={data.workspaceDefaults}
+                />
+              )}
+
+              {activeTab === 'settings' && (
+                <SettingsPage
+                  currentUser={user}
+                  users={data.users ?? []}
+                  token={token}
+                  theme={theme}
+                  onToggleTheme={toggleTheme}
+                  userPreferences={data.userPreferences}
+                  workspaceDefaults={data.workspaceDefaults}
+                  developerState={data.developerState}
+                  completedTours={completedTours}
+                  initialSection={settingsSection}
+                  onSectionChange={setSettingsSection}
+                  onUpdateUser={setUser}
+                  onSyncComplete={() => fetchBootstrap(token)}
+                  onNotify={notify}
+                  onStartTour={(pageKey) => {
+                    if (pageKey === 'users' && !isAdmin) return;
+                    setForcedTourPage(pageKey);
+                  }}
+                  onResetAllTours={handleResetAllTours}
+                  onOpenHowTo={() => setActiveTab('howto')}
                 />
               )}
 
@@ -848,7 +951,13 @@ export default function App() {
                   currentUser={user}
                   completedTours={completedTours}
                   onStartTour={(pageKey) => {
-                    if (pageKey === 'users' && !isAdmin) return;
+                    if (pageKey === 'users') {
+                      if (!isAdmin) return;
+                      setSettingsSection('accounts');
+                      setActiveTab('settings');
+                      setForcedTourPage('settings');
+                      return;
+                    }
                     setActiveTab(pageKey);
                     if (pageKey !== 'inspections') setSelectedReportId(null);
                     setForcedTourPage(pageKey);
@@ -872,6 +981,171 @@ export default function App() {
         </main>
       </div>
 
+      {/* Mobile Fixed Bottom Navigation Bar (< lg, 60px high) */}
+      <nav
+        aria-label="Mobile Primary Navigation"
+        className="no-print lg:hidden fixed bottom-0 left-0 right-0 z-40 h-[60px] bg-white/95 dark:bg-[#111827]/95 backdrop-blur-md border-t border-[#E2E8F0] dark:border-[#1E293B] grid grid-cols-5 items-center px-1"
+      >
+        {mobilePrimaryTabs.map((key) => {
+          const item = navItems.find((n) => n.key === key)!;
+          const Icon = item.icon;
+          const active = activeTab === item.key && !mobileMoreOpen;
+          const badge =
+            key === 'inspections' && needMyActionCount > 0
+              ? needMyActionCount
+              : key === 'gantt' && activeBlockedCount > 0
+              ? activeBlockedCount
+              : 0;
+
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => {
+                setActiveTab(key);
+                if (key !== 'inspections') setSelectedReportId(null);
+                setMobileMoreOpen(false);
+              }}
+              className={`relative min-h-[44px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors ${
+                active
+                  ? 'text-[#1D4ED8] dark:text-[#60A5FA]'
+                  : 'text-[#64748B] dark:text-[#94A3B8]'
+              }`}
+            >
+              <div className="relative">
+                <Icon className="w-[20px] h-[20px]" />
+                {badge > 0 && (
+                  <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-[#DC2626] text-white font-mono text-[9px] font-bold flex items-center justify-center tabular-nums">
+                    {badge}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] font-medium tracking-tight leading-none">
+                {item.mobileLabel}
+              </span>
+            </button>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={() => setMobileMoreOpen((v) => !v)}
+          className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 rounded-lg transition-colors ${
+            mobileMoreOpen || mobileSecondaryActive
+              ? 'text-[#1D4ED8] dark:text-[#60A5FA]'
+              : 'text-[#64748B] dark:text-[#94A3B8]'
+          }`}
+        >
+          <MoreHorizontal className="w-[20px] h-[20px]" />
+          <span className="text-[10px] font-medium tracking-tight leading-none">More</span>
+        </button>
+      </nav>
+
+      {/* Mobile Bottom Sheet for Library, Settings, How to Use, Theme & Account */}
+      {mobileMoreOpen && (
+        <div
+          className="no-print lg:hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end"
+          onClick={() => setMobileMoreOpen(false)}
+        >
+          <div
+            className="w-full bg-white dark:bg-[#111827] border-t border-[#E2E8F0] dark:border-[#334155] rounded-t-2xl p-4 pb-6 space-y-4 shadow-2xl max-h-[82vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-[#CBD5E1] dark:bg-[#475569] rounded-full mx-auto" />
+
+            <div className="flex items-center justify-between gap-3 px-1">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src="/assets/aistudio/Gemini_Generated_Image_blqe01blqe01blqe_2a407c6c.jpg"
+                  alt="IndSpectora"
+                  className="w-9 h-9 rounded-lg object-cover border border-[#E2E8F0] dark:border-[#334155] shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-[#0F172A] dark:text-[#F8FAFC] truncate">
+                    {user.name}
+                  </div>
+                  <div className="text-xs text-[#64748B] dark:text-[#94A3B8] truncate">
+                    {user.title || 'Operations Member'} · {userRoleLabels}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileMoreOpen(false)}
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center text-[#64748B] dark:text-[#94A3B8] rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              {(['library', 'settings', 'howto'] as ActiveTab[]).map((key) => {
+                const item = navItems.find((n) => n.key === key)!;
+                const Icon = item.icon;
+                const active = activeTab === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(key);
+                      setMobileMoreOpen(false);
+                    }}
+                    className={`w-full min-h-[48px] px-3.5 flex items-center justify-between rounded-xl border text-sm font-medium transition-colors ${
+                      active
+                        ? 'bg-[#EFF6FF] dark:bg-[#1E3A8A]/40 border-[#BFDBFE] dark:border-[#1E40AF] text-[#1D4ED8] dark:text-[#93C5FD]'
+                        : 'bg-[#F8FAFC] dark:bg-[#0F172A] border-[#E2E8F0] dark:border-[#334155] text-[#0F172A] dark:text-[#F8FAFC]'
+                    }`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span>{item.label}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  toggleTheme();
+                }}
+                className="min-h-[46px] inline-flex items-center justify-center gap-2 px-3 text-xs font-semibold text-[#334155] dark:text-[#CBD5E1] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-xl"
+              >
+                {theme === 'dark' ? (
+                  <>
+                    <Sun className="w-4 h-4 text-[#FBBF24]" />
+                    <span>Light Mode</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-4 h-4" />
+                    <span>Dark Mode</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMoreOpen(false);
+                  handleLogout();
+                }}
+                className="min-h-[46px] inline-flex items-center justify-center gap-2 px-3 text-xs font-semibold text-[#DC2626] dark:text-[#F87171] bg-[#FEF2F2] dark:bg-[#7F1D1D]/25 border border-[#FECACA] dark:border-[#991B1B] rounded-xl"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+
+            <div className="text-center text-[10px] tracking-wide text-[#64748B] dark:text-[#94A3B8] opacity-60 pt-1">
+              Created by Aoraki CreaLabs
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* First-Time / Replay Guided Tour Overlay */}
       {activeTourPage && (
         <PageTourOverlay
@@ -883,7 +1157,7 @@ export default function App() {
 
       {/* Live Notification Toast */}
       {toast && (
-        <div className="no-print fixed bottom-5 right-5 z-50 max-w-sm bg-[#0F172A] dark:bg-[#1E293B] text-white px-4 py-3 rounded-md shadow-lg border border-[#334155] flex items-start justify-between gap-3">
+        <div className="no-print fixed bottom-20 lg:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-50 sm:max-w-sm bg-[#0F172A] dark:bg-[#1E293B] text-white px-4 py-3 rounded-xl lg:rounded-md shadow-lg border border-[#334155] flex items-start justify-between gap-3">
           <div className="text-xs leading-relaxed">
             <span
               className={`font-semibold mr-1.5 ${
@@ -897,7 +1171,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setToast(null)}
-            className="text-[#94A3B8] hover:text-white shrink-0"
+            className="text-[#94A3B8] hover:text-white shrink-0 p-1"
           >
             <X className="w-3.5 h-3.5" />
           </button>

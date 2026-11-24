@@ -76,11 +76,11 @@ export const ROLE_CAPABILITY_MATRIX: RoleCapabilityRow[] = [
     notes: 'Admins retain override control on approved reports and completed project tasks with full Digital Footprint.',
   },
   {
-    capability: 'Manage Users & Assign Multi-Roles',
+    capability: 'Manage Users & Assign Multi-Roles (Settings → Accounts)',
     admin: true,
     approver: false,
     user: false,
-    notes: 'Full user CRUD, password resets, and multi-role assignment (users can hold Admin, Approver, User).',
+    notes: 'Full user CRUD, password resets, multi-role assignment, workspace defaults & Developer Mock Data inside Settings.',
   },
 ];
 
@@ -200,6 +200,33 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
       },
     ],
   },
+  history: {
+    key: 'history',
+    title: 'Asset Inspection History & Compare',
+    subtitle: 'Review chronological inspection trends, evidence photos, and compare 2 to 4 sessions side by side.',
+    summary:
+      'Pick any asset to review its full cross-report audit history, numeric parameter trends (Latest, Avg, Min, Max), pin observations, and captured photos—or select 2 to 4 sessions to inspect side by side.',
+    rolesNote: 'Available to all roles for complete equipment traceability.',
+    checklist: [
+      'Filter assets by Facility/Zone Area or jump straight from Asset Library rows.',
+      'Review automatic numeric parameter trends and photo evidence across audits.',
+      'Select 2 to 4 inspection sessions (or use Compare Latest 2 / 3 / 4) for synchronized side-by-side review.',
+    ],
+    steps: [
+      {
+        title: 'Asset Picker & Trend Summary',
+        targetArea: 'Top Asset Selector & Trend Cards',
+        description:
+          'Switch between any library asset to view its total inspection count, latest condition status, photo count, and parameter delta trends.',
+      },
+      {
+        title: 'Custom 2–4 Session Side-by-Side Comparison',
+        targetArea: 'Compare Mode & Quick Presets',
+        description:
+          'Check any 2 to 4 inspection sessions to compare conditions, parameter deltas vs. baseline, pin notes, and photos side by side.',
+      },
+    ],
+  },
   gantt: {
     key: 'gantt',
     title: 'Projects (WBS, Gantt & Table Views)',
@@ -240,8 +267,8 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
     title: 'User & Role Management',
     subtitle: 'Manage local accounts, assign multiple roles per user, and reset passwords securely.',
     summary:
-      'Administrators manage all IndSpectora accounts here. Each user can hold one or more roles simultaneously (Admin, Approver, User) to match real plant responsibilities without duplicate accounts.',
-    rolesNote: 'Restricted to Admin users only.',
+      'Administrators manage all IndSpectora accounts inside Settings → Account Management. Each user can hold one or more roles simultaneously (Admin, Approver, User) to match real plant responsibilities without duplicate accounts.',
+    rolesNote: 'Restricted to Admin users inside Settings → Account Management.',
     checklist: [
       'Assign one or more roles (Admin, Approver, User) via multi-role checkboxes.',
       'Ensure designated reviewers hold the Approver role so they appear in Inspection approval routing.',
@@ -250,7 +277,7 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
     steps: [
       {
         title: 'Multi-Role Assignment',
-        targetArea: 'Add User / Edit User Modal',
+        targetArea: 'Settings → Account Management',
         description:
           'Combine roles freely—for instance, grant someone both Approver and Admin, or keep field technicians as Standard User. Safety checks prevent removing the last Admin.',
       },
@@ -265,6 +292,41 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
         targetArea: 'Row Action Buttons',
         description:
           'Reset passwords cleanly (revoking active sessions) or remove deactivated accounts without breaking historical audit footprints.',
+      },
+    ],
+  },
+  settings: {
+    key: 'settings',
+    title: 'Settings, Accounts & Developer Mode',
+    subtitle: 'Manage profile security, display density, account roles, workspace defaults, JSON backups, and Developer Mock Data.',
+    summary:
+      'Every signed-in user can update their profile, rotate passwords, revoke remote sessions, configure Light/Dark mode and Comfortable/Compact table density, and reset guided tours. Admins also access Account Management, Workspace Defaults & JSON Backup, and Developer Mock Data isolation.',
+    rolesNote: 'Profile & Appearance available to all users; Account Management, Workspace Defaults & Developer Mode restricted to Admins.',
+    checklist: [
+      'Rotate your personal password or revoke inactive browser sessions under Profile & Security.',
+      'Choose Comfortable vs. Compact table row density and your Default Landing Workspace under Appearance & Preferences.',
+      'Admins: Manage team multi-roles under Account Management or download sanitized JSON database backups under Workspace & Backup.',
+      'Admins: Toggle Developer Mode → Mock Data Pack ON to explore sample assets/schematics, or OFF to immediately purge mock & edited mock data while preserving all manual records.',
+    ],
+    steps: [
+      {
+        title: 'Personal Profile, Password & Active Sessions',
+        targetArea: 'Settings → Profile & Security',
+        description:
+          'Update your display name/title, change your password cleanly (automatically invalidating other devices), and revoke stale login tokens.',
+      },
+      {
+        title: 'Table Density, Default Landing Tab & Tours',
+        targetArea: 'Settings → Appearance & Preferences',
+        description:
+          'Switch between Comfortable and Compact table density, pick which module opens on sign-in, control sync toast popups, or reset all interactive guided tours.',
+      },
+      {
+        title: 'Account Management, Workspace Defaults & Developer Mock Data',
+        targetArea: 'Admin Sections',
+        description:
+          'Administrators manage user accounts/roles, set workspace default cycles & backup JSON snapshots, and toggle isolated Mock Data ON/OFF or Reset Modified Mock Data without ever touching manual entries.',
+        tip: 'Turning Mock Data OFF immediately deletes mock records and any edits made to mock records while preserving manual work.',
       },
     ],
   },
@@ -306,15 +368,15 @@ export const PAGE_GUIDES: Record<TourPageKey, PageGuideSection> = {
 export const GUIDE_ORDER: TourPageKey[] = [
   'dashboard',
   'inspections',
-  'library',
   'gantt',
-  'users',
+  'history',
+  'library',
+  'settings',
   'howto',
 ];
 
-export function filterVisibleGuides(roles: UserRole[]): PageGuideSection[] {
-  const isAdmin = roles.includes('admin');
-  return GUIDE_ORDER.filter((key) => key !== 'users' || isAdmin).map((key) => PAGE_GUIDES[key]);
+export function filterVisibleGuides(_roles: UserRole[]): PageGuideSection[] {
+  return GUIDE_ORDER.map((key) => PAGE_GUIDES[key]);
 }
 
 export type FaqCategory =
@@ -368,7 +430,7 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
     answer:
       'Only accounts that explicitly hold the Approver role appear in the sequential approval selector. Holding only Admin or only User does not include someone in the approver roster.',
     steps: [
-      'Sign in as an Admin and open User Management.',
+      'Sign in as an Admin and open Settings → Account Management.',
       'Click Edit on the teammate row and check the Approver role box alongside any existing roles.',
       'Save changes—the user will immediately become selectable across Steps 1 to 6.',
     ],
@@ -381,10 +443,10 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
     category: 'access',
     question: 'What are the default first-time login accounts, and should we change them?',
     answer:
-      'When IndSpectora starts against an empty SQLite database, it seeds two starter accounts only: an Admin+Approver account (admin@indspectora.local / admin123) and a Standard User account (inspector@indspectora.local / inspect123). No sample operational records are seeded.',
+      'When IndSpectora starts against an empty SQLite database, it seeds two starter accounts only: an Admin+Approver account (admin@indspectora.local / admin123) and a Standard User account (inspector@indspectora.local / inspect123). No sample operational records are seeded unless an Admin turns on Developer Mock Data.',
     steps: [
       'Log in as admin@indspectora.local right after first deployment.',
-      'Open User Management, reset both starter passwords immediately, and create named accounts for your plant operators, supervisors, and reviewers.',
+      'Open Settings → Account Management, reset both starter passwords immediately, and create named accounts for your plant operators, supervisors, and reviewers.',
     ],
     appliesTo: 'Admin',
     relatedPageKey: 'users',

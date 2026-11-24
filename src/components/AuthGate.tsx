@@ -84,14 +84,21 @@ export function AuthGate({ onAuthenticated, theme, onToggleTheme }: AuthGateProp
 
       <div className="max-w-5xl w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         {/* Left Context Column */}
-        <div className="lg:col-span-6 bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-8 flex flex-col justify-between">
+        <div className="lg:col-span-6 bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-xl lg:rounded-lg p-6 sm:p-8 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] dark:border-[#1E293B] pb-5 mb-6">
-              <span className="font-display text-xl font-bold tracking-tight text-[#0F172A] dark:text-[#F8FAFC]">
-                IndSpectora
-              </span>
-              <span className="font-mono text-xs text-[#64748B] dark:text-[#94A3B8]">
-                Local Operations Server
+            <div className="flex items-center justify-between border-b border-[#E2E8F0] dark:border-[#1E293B] pb-5 mb-6 gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <img
+                  src="/assets/aistudio/Gemini_Generated_Image_blqe01blqe01blqe_2a407c6c.jpg"
+                  alt="IndSpectora logo"
+                  className="w-10 h-10 rounded-xl object-cover border border-[#E2E8F0] dark:border-[#334155] shrink-0"
+                />
+                <span className="font-display text-xl font-bold tracking-tight text-[#0F172A] dark:text-[#F8FAFC] truncate">
+                  IndSpectora
+                </span>
+              </div>
+              <span className="font-mono text-xs text-[#64748B] dark:text-[#94A3B8] shrink-0">
+                Local Operations
               </span>
             </div>
 

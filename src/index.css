@@ -41,6 +41,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+html[data-density="compact"] table th,
+html[data-density="compact"] table td {
+  padding-top: 0.4rem !important;
+  padding-bottom: 0.4rem !important;
+}
+
 @media print {
   @page {
     size: A4 portrait;

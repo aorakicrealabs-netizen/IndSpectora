@@ -16,8 +16,11 @@ import {
   createNotification,
   db,
   getBootstrapData,
+  getDeveloperSettingsState,
   getFullReportById,
   getPrimaryRole,
+  getUserPreferences,
+  getWorkspaceDefaults,
   hashPassword,
   initSchema,
   logActivity,
@@ -26,8 +29,12 @@ import {
   recordEntryEditHistory,
   recordReportFootprint,
   seedDatabaseIfEmpty,
+  setUserPreferences,
+  setWorkspaceDefaults,
+  setWorkspaceSetting,
   verifyPassword,
 } from './server/db.ts';
+import { purgeMockData, seedMockData } from './server/mockData.ts';
 import type {
   ActivityLog,
   ConditionStatus,
@@ -407,8 +414,10 @@ const VALID_TOUR_KEYS = new Set<TourPageKey>([
   'dashboard',
   'inspections',
   'library',
+  'history',
   'gantt',
   'users',
+  'settings',
   'howto',
 ]);
 
@@ -430,6 +439,291 @@ app.delete('/api/tours', requireAuth, (req: AuthenticatedRequest, res: Response)
   db.prepare(`DELETE FROM user_tour_progress WHERE user_id = ?`).run(req.user!.id);
   res.json({ bootstrap: bootstrapFor(req) });
 });
+
+// --- Self-Service Account, Security & Preferences ---
+
+function hashSessionId(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex').slice(0, 16);
+}
+
+function listActiveUserSessions(userId: string, currentToken?: string) {
+  const now = new Date().toISOString();
+  const rows = db
+    .prepare(
+      `SELECT token, created_at, expires_at FROM sessions
+       WHERE user_id = ? AND expires_at > ?
+       ORDER BY created_at DESC`
+    )
+    .all(userId, now) as { token: string; created_at: string; expires_at: string }[];
+
+  return rows.map((r) => ({
+    sessionId: hashSessionId(r.token),
+    createdAt: r.created_at,
+    expiresAt: r.expires_at,
+    isCurrent: Boolean(currentToken && r.token === currentToken),
+  }));
+}
+
+app.patch('/api/account/profile', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const { name, title } = req.body as { name?: string; title?: string };
+  const cleanName = (name ?? '').trim();
+  const cleanTitle = (title ?? '').trim();
+
+  if (!cleanName) {
+    res.status(400).json({ error: 'Full name cannot be empty.' });
+    return;
+  }
+
+  db.prepare(`UPDATE users SET name = ?, title = ? WHERE id = ?`).run(
+    cleanName,
+    cleanTitle,
+    req.user!.id
+  );
+  db.prepare(`UPDATE project_tasks SET assignee_name = ? WHERE assignee_id = ?`).run(
+    cleanName,
+    req.user!.id
+  );
+
+  const updatedRow = db.prepare(`SELECT * FROM users WHERE id = ?`).get(req.user!.id) as Record<
+    string,
+    unknown
+  >;
+  const updatedUser = mapUserRow(updatedRow);
+  const log = logActivity(
+    updatedUser.name,
+    updatedUser.role,
+    'account:profile_updated',
+    `Updated personal profile settings.`
+  );
+  broadcastRealtime('user:changed', undefined, log);
+
+  res.json({ user: updatedUser, bootstrap: bootstrapFor(req) });
+});
+
+app.post('/api/account/password', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const { currentPassword, newPassword } = req.body as {
+    currentPassword?: string;
+    newPassword?: string;
+  };
+  if (!currentPassword || !newPassword || newPassword.length < 6) {
+    res
+      .status(400)
+      .json({ error: 'Current password and new password (min 6 characters) are required.' });
+    return;
+  }
+
+  const row = db
+    .prepare(`SELECT password_hash FROM users WHERE id = ?`)
+    .get(req.user!.id) as { password_hash: string } | undefined;
+  if (!row || !verifyPassword(currentPassword, row.password_hash)) {
+    res.status(400).json({ error: 'Current password is incorrect.' });
+    return;
+  }
+
+  db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(
+    hashPassword(newPassword),
+    req.user!.id
+  );
+  if (req.sessionToken) {
+    db.prepare(`DELETE FROM sessions WHERE user_id = ? AND token != ?`).run(
+      req.user!.id,
+      req.sessionToken
+    );
+  }
+
+  const log = logActivity(
+    req.user!.name,
+    req.user!.role,
+    'account:password_changed',
+    `Changed account password and invalidated other active sessions.`
+  );
+  res.json({ ok: true, log, sessions: listActiveUserSessions(req.user!.id, req.sessionToken) });
+});
+
+app.get('/api/account/sessions', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  res.json({ sessions: listActiveUserSessions(req.user!.id, req.sessionToken) });
+});
+
+app.delete(
+  '/api/account/sessions/:sessionId',
+  requireAuth,
+  (req: AuthenticatedRequest, res: Response) => {
+    const { sessionId } = req.params;
+    const rows = db
+      .prepare(`SELECT token FROM sessions WHERE user_id = ?`)
+      .all(req.user!.id) as { token: string }[];
+    const match = rows.find((r) => hashSessionId(r.token) === sessionId);
+    if (!match) {
+      res.status(404).json({ error: 'Session not found.' });
+      return;
+    }
+    if (req.sessionToken && match.token === req.sessionToken) {
+      res.status(400).json({ error: 'Use Sign Out to close your current active session.' });
+      return;
+    }
+    db.prepare(`DELETE FROM sessions WHERE token = ? AND user_id = ?`).run(match.token, req.user!.id);
+    res.json({ sessions: listActiveUserSessions(req.user!.id, req.sessionToken) });
+  }
+);
+
+app.delete('/api/account/sessions', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  if (req.sessionToken) {
+    db.prepare(`DELETE FROM sessions WHERE user_id = ? AND token != ?`).run(
+      req.user!.id,
+      req.sessionToken
+    );
+  }
+  res.json({ sessions: listActiveUserSessions(req.user!.id, req.sessionToken) });
+});
+
+app.put('/api/account/preferences', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const body = req.body as Partial<{
+    tableDensity: 'comfortable' | 'compact';
+    defaultLandingTab: 'dashboard' | 'inspections' | 'library' | 'gantt';
+    toastNotifications: boolean;
+    approvalAlerts: boolean;
+  }>;
+  const userPreferences = setUserPreferences(req.user!.id, body);
+  res.json({ userPreferences, bootstrap: bootstrapFor(req) });
+});
+
+// --- Admin Workspace Settings, Backup & Developer Mock Data ---
+
+app.put(
+  '/api/admin/workspace-defaults',
+  requireAuth,
+  requireAdmin,
+  (req: AuthenticatedRequest, res: Response) => {
+    const body = req.body as Partial<{
+      organizationName: string;
+      defaultCycleType: CycleType;
+      defaultCriticality: CriticalityLevel;
+      defaultRequirePhoto: boolean;
+    }>;
+
+    if (body.organizationName !== undefined && !body.organizationName.trim()) {
+      res.status(400).json({ error: 'Workspace organization name cannot be empty.' });
+      return;
+    }
+
+    const workspaceDefaults = setWorkspaceDefaults(body);
+    const log = logActivity(
+      req.user!.name,
+      req.user!.role,
+      'settings:workspace_defaults',
+      `Updated workspace defaults (${workspaceDefaults.organizationName}).`
+    );
+    broadcastRealtime('state:sync', log.summary, log);
+
+    res.json({ workspaceDefaults, bootstrap: bootstrapFor(req) });
+  }
+);
+
+app.get('/api/admin/backup', requireAuth, requireAdmin, (req: AuthenticatedRequest, res: Response) => {
+  const payload = getBootstrapData(req.user!.id);
+  const dateTag = new Date().toISOString().slice(0, 10);
+  const backup = {
+    app: 'IndSpectora',
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    exportedBy: {
+      id: req.user!.id,
+      name: req.user!.name,
+      email: req.user!.email,
+    },
+    workspaceDefaults: payload.workspaceDefaults,
+    developerState: payload.developerState,
+    data: {
+      users: payload.users,
+      facilityAreas: payload.facilityAreas,
+      libraryItems: payload.libraryItems,
+      projects: payload.projects,
+      tasks: payload.tasks,
+      blockers: payload.blockers,
+      taskHistory: payload.taskHistory,
+      taskComments: payload.taskComments,
+      reports: payload.reports,
+      activityLogs: payload.activityLogs,
+    },
+  };
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="indspectora-backup-${dateTag}.json"`);
+  res.send(JSON.stringify(backup, null, 2));
+});
+
+app.put(
+  '/api/admin/developer-mode',
+  requireAuth,
+  requireAdmin,
+  (req: AuthenticatedRequest, res: Response) => {
+    const { enabled } = req.body as { enabled?: boolean };
+    const nextEnabled = Boolean(enabled);
+    setWorkspaceSetting('developer_mode', nextEnabled);
+    const developerState = getDeveloperSettingsState();
+    broadcastRealtime('state:sync');
+    res.json({ developerState, bootstrap: bootstrapFor(req) });
+  }
+);
+
+app.post(
+  '/api/admin/mock-data/toggle',
+  requireAuth,
+  requireAdmin,
+  (req: AuthenticatedRequest, res: Response) => {
+    const { enabled } = req.body as { enabled?: boolean };
+    const nextEnabled = Boolean(enabled);
+
+    if (nextEnabled) {
+      setWorkspaceSetting('developer_mode', true);
+      seedMockData(req.user!.id);
+      const log = logActivity(
+        req.user!.name,
+        req.user!.role,
+        'developer:mock_enabled',
+        'Enabled Developer Mock Data pack (fresh baseline loaded; manual data preserved).'
+      );
+      broadcastRealtime('state:sync', log.summary, log);
+    } else {
+      purgeMockData(req.user!.id);
+      setWorkspaceSetting('mock_data_enabled', false);
+      const log = logActivity(
+        req.user!.name,
+        req.user!.role,
+        'developer:mock_disabled',
+        'Disabled Developer Mock Data pack and purged sample & modified mock items.'
+      );
+      broadcastRealtime('state:sync', log.summary, log);
+    }
+
+    res.json({
+      developerState: getDeveloperSettingsState(),
+      bootstrap: bootstrapFor(req),
+    });
+  }
+);
+
+app.post(
+  '/api/admin/mock-data/reset',
+  requireAuth,
+  requireAdmin,
+  (req: AuthenticatedRequest, res: Response) => {
+    setWorkspaceSetting('developer_mode', true);
+    seedMockData(req.user!.id);
+    const log = logActivity(
+      req.user!.name,
+      req.user!.role,
+      'developer:mock_reset',
+      'Reset Developer Mock Data pack to canonical baseline while preserving manual items.'
+    );
+    broadcastRealtime('state:sync', log.summary, log);
+
+    res.json({
+      developerState: getDeveloperSettingsState(),
+      bootstrap: bootstrapFor(req),
+    });
+  }
+);
 
 // --- Admin User Management (Multi-Role Full CRUD) ---
 
@@ -2754,13 +3048,14 @@ function resolveTaskAssignee(assigneeId?: string | null, fallbackName?: string):
 }
 
 app.post('/api/projects', requireAuth, requireProjectManager, (req: AuthenticatedRequest, res: Response) => {
-  const { name, code, description, cycleType, startDate, endDate } = req.body as {
+  const { name, code, description, cycleType, startDate, endDate, useWbs } = req.body as {
     name?: string;
     code?: string;
     description?: string;
     cycleType?: CycleType;
     startDate?: string;
     endDate?: string;
+    useWbs?: boolean;
   };
 
   if (!name?.trim() || !startDate || !endDate) {
@@ -2770,9 +3065,10 @@ app.post('/api/projects', requireAuth, requireProjectManager, (req: Authenticate
 
   const id = createId('prj');
   const now = new Date().toISOString();
+  const useWbsFlag = useWbs === false ? 0 : 1;
   db.prepare(
-    `INSERT INTO projects (id, name, code, description, cycle_type, start_date, end_date, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO projects (id, name, code, description, cycle_type, start_date, end_date, use_wbs, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     name.trim(),
@@ -2780,14 +3076,82 @@ app.post('/api/projects', requireAuth, requireProjectManager, (req: Authenticate
     (description ?? '').trim(),
     normalizeCycleType(cycleType, 'yearly'),
     startDate,
-    endDate,
+    endDate < startDate ? startDate : endDate,
+    useWbsFlag,
     now
   );
 
-  const log = logActivity(req.user!.name, req.user!.role, 'project:created', `Created project ${name.trim()}.`);
+  const log = logActivity(
+    req.user!.name,
+    req.user!.role,
+    'project:created',
+    `Created project ${name.trim()} (${useWbsFlag ? 'WBS enabled' : 'WBS disabled'}).`
+  );
   broadcastRealtime('project:changed', log.summary, log);
 
   res.status(201).json({ id, bootstrap: bootstrapFor(req) });
+});
+
+app.patch('/api/projects/:id', requireAuth, requireProjectManager, (req: AuthenticatedRequest, res: Response) => {
+  const existing = db.prepare(`SELECT * FROM projects WHERE id = ?`).get(req.params.id) as
+    | Record<string, unknown>
+    | undefined;
+  if (!existing) {
+    res.status(404).json({ error: 'Project not found.' });
+    return;
+  }
+
+  const body = req.body as {
+    name?: string;
+    code?: string;
+    description?: string;
+    cycleType?: CycleType;
+    startDate?: string;
+    endDate?: string;
+    useWbs?: boolean;
+  };
+
+  const nextName = typeof body.name === 'string' ? body.name.trim() : String(existing.name);
+  if (!nextName) {
+    res.status(400).json({ error: 'Project name cannot be empty.' });
+    return;
+  }
+  const nextCode =
+    typeof body.code === 'string' && body.code.trim()
+      ? body.code.trim().toUpperCase()
+      : String(existing.code);
+  const nextDesc =
+    typeof body.description === 'string' ? body.description.trim() : String(existing.description ?? '');
+  const nextCycle =
+    body.cycleType !== undefined
+      ? normalizeCycleType(body.cycleType, String(existing.cycle_type) as CycleType)
+      : (String(existing.cycle_type) as CycleType);
+  const nextStart = typeof body.startDate === 'string' && body.startDate ? body.startDate : String(existing.start_date);
+  const rawEnd = typeof body.endDate === 'string' && body.endDate ? body.endDate : String(existing.end_date);
+  const nextEnd = rawEnd < nextStart ? nextStart : rawEnd;
+  const nextUseWbs =
+    typeof body.useWbs === 'boolean'
+      ? body.useWbs
+        ? 1
+        : 0
+      : Number(existing.use_wbs ?? 1);
+
+  db.prepare(
+    `UPDATE projects
+     SET name = ?, code = ?, description = ?, cycle_type = ?, start_date = ?, end_date = ?, use_wbs = ?
+     WHERE id = ?`
+  ).run(nextName, nextCode, nextDesc, nextCycle, nextStart, nextEnd, nextUseWbs, req.params.id);
+
+  const wbsToggled =
+    typeof body.useWbs === 'boolean' && (body.useWbs ? 1 : 0) !== Number(existing.use_wbs ?? 1);
+  const summary = wbsToggled
+    ? `${body.useWbs ? 'Enabled' : 'Disabled'} WBS numbering for project ${nextCode} · ${nextName}.`
+    : `Updated project settings for ${nextCode} · ${nextName}.`;
+
+  const log = logActivity(req.user!.name, req.user!.role, 'project:updated', summary);
+  broadcastRealtime('project:changed', summary, log);
+
+  res.json({ id: req.params.id, bootstrap: bootstrapFor(req) });
 });
 
 app.post('/api/tasks', requireAuth, requireProjectManager, (req: AuthenticatedRequest, res: Response) => {

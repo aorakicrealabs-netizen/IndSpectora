@@ -40,6 +40,7 @@ import type {
   ReportApprovalStep,
   ReportStatus,
   User,
+  WorkspaceDefaults,
 } from '../types.ts';
 import { formatRoleLabel, hasAnyRole } from '../types.ts';
 import {
@@ -71,6 +72,7 @@ interface InspectionWorkspaceProps {
   onSyncComplete: () => Promise<void>;
   onNotify: (message: string, kind?: 'info' | 'error') => void;
   onNavigateToTask?: (projectId: string, taskId: string) => void;
+  workspaceDefaults?: WorkspaceDefaults;
 }
 
 type StatusFilterKey = 'all' | 'need_my_action' | ReportStatus;
@@ -163,12 +165,15 @@ export function InspectionWorkspace({
   onSyncComplete,
   onNotify,
   onNavigateToTask,
+  workspaceDefaults,
 }: InspectionWorkspaceProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilterKey>('all');
   const [cycleFilter, setCycleFilter] = useState<'all' | CycleType>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newCycle, setNewCycle] = useState<CycleType>('routine');
+  const [newCycle, setNewCycle] = useState<CycleType>(
+    workspaceDefaults?.defaultCycleType ?? 'routine'
+  );
   const [newArea, setNewArea] = useState('');
   const [facilityDropdownOpen, setFacilityDropdownOpen] = useState(false);
   const [itemSearch, setItemSearch] = useState('');
@@ -376,9 +381,9 @@ export function InspectionWorkspace({
   return (
     <div className="space-y-5">
       {/* Toolbar */}
-      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex flex-wrap items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] rounded-md border border-[#E2E8F0] dark:border-[#1E293B]">
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-3.5 sm:p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="flex items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] rounded-md border border-[#E2E8F0] dark:border-[#1E293B] overflow-x-auto max-w-full">
             {(
               [
                 { key: 'all', label: 'All' },
@@ -393,7 +398,7 @@ export function InspectionWorkspace({
                 key={opt.key}
                 type="button"
                 onClick={() => setStatusFilter(opt.key)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 sm:py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
                   statusFilter === opt.key
                     ? 'bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] shadow-xs'
                     : 'text-[#475569] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
@@ -409,7 +414,7 @@ export function InspectionWorkspace({
             ))}
           </div>
 
-          <div className="flex items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] rounded-md border border-[#E2E8F0] dark:border-[#1E293B]">
+          <div className="flex items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] rounded-md border border-[#E2E8F0] dark:border-[#1E293B] overflow-x-auto max-w-full">
             {(
               [
                 { key: 'all', label: 'All Cycles' },
@@ -422,7 +427,7 @@ export function InspectionWorkspace({
                 key={opt.key}
                 type="button"
                 onClick={() => setCycleFilter(opt.key)}
-                className={`px-3 py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
+                className={`px-3 py-1.5 sm:py-1 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 ${
                   cycleFilter === opt.key
                     ? 'bg-white dark:bg-[#1E293B] text-[#0F172A] dark:text-[#F8FAFC] shadow-xs'
                     : 'text-[#475569] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]'
@@ -434,11 +439,11 @@ export function InspectionWorkspace({
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 sm:gap-2.5">
           <button
             type="button"
             onClick={() => exportReportsToCsv(filteredReports)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 min-h-[40px] px-3.5 py-2 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
           >
             <Download className="w-3.5 h-3.5 text-[#475569] dark:text-[#94A3B8]" />
             <span>Export CSV</span>
@@ -446,8 +451,11 @@ export function InspectionWorkspace({
 
           <button
             type="button"
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md whitespace-nowrap shrink-0"
+            onClick={() => {
+              setNewCycle(workspaceDefaults?.defaultCycleType ?? 'routine');
+              setShowCreateModal(true);
+            }}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 min-h-[40px] px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md whitespace-nowrap shrink-0"
           >
             <FilePlus2 className="w-3.5 h-3.5" />
             <span>Start Inspection Report</span>
@@ -457,7 +465,108 @@ export function InspectionWorkspace({
 
       {/* Reports Grid / Table */}
       <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Compact Mobile Cards */}
+        <div className="md:hidden divide-y divide-[#E2E8F0] dark:divide-[#1E293B]">
+          {filteredReports.length === 0 ? (
+            <div className="py-10 px-4 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+              No inspection reports match your filters. Start a new report to begin field capture.
+            </div>
+          ) : (
+            filteredReports.map((rep) => {
+              const doneCount = rep.entries.filter((e) => e.condition !== 'na').length;
+              const photoCount = rep.entries.reduce((acc, e) => acc + e.photos.length, 0);
+              const canDelete = rep.status === 'draft' || hasAnyRole(currentUser, 'admin');
+              const needsAction = isReportNeedingUserAction(rep, currentUser);
+              const approvalInfo = getApprovalProgressSummary(rep);
+
+              return (
+                <div
+                  key={rep.id}
+                  onClick={() => onSelectReport(rep.id)}
+                  className={`p-3.5 space-y-2.5 cursor-pointer active:bg-[#F8FAFC] dark:active:bg-[#1E293B]/60 ${
+                    needsAction ? 'bg-[#EFF6FF]/40 dark:bg-[#1E3A8A]/10' : ''
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs font-semibold text-[#1D4ED8] dark:text-[#60A5FA]">
+                          {rep.reportNumber}
+                        </span>
+                        {needsAction && (
+                          <span
+                            title="Needs your action"
+                            className="w-2 h-2 rounded-full bg-[#DC2626] shrink-0"
+                          />
+                        )}
+                        <span aria-hidden="true" className="text-[#CBD5E1] dark:text-[#475569]">·</span>
+                        <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                          {formatCycleLabel(rep.cycleType)}
+                        </span>
+                      </div>
+                      <div className="font-medium text-sm text-[#0F172A] dark:text-[#F8FAFC] truncate mt-0.5">
+                        {rep.title}
+                      </div>
+                      <div className="text-xs text-[#64748B] dark:text-[#94A3B8] truncate">
+                        {rep.facilityArea} · {rep.inspectorName}
+                      </div>
+                    </div>
+                    <span
+                      className={`text-xs font-semibold shrink-0 ${
+                        rep.status === 'approved' || rep.status === 'reviewed'
+                          ? 'text-[#16A34A] dark:text-[#4ADE80]'
+                          : rep.status === 'pending_approval' || rep.status === 'submitted'
+                          ? 'text-[#1D4ED8] dark:text-[#60A5FA]'
+                          : rep.status === 'sent_back'
+                          ? 'text-[#DC2626] dark:text-[#F87171]'
+                          : 'text-[#D97706] dark:text-[#FBBF24]'
+                      }`}
+                    >
+                      {formatReportStatusLabel(rep.status)}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center gap-3 text-[11px] text-[#475569] dark:text-[#94A3B8] font-mono tabular-nums">
+                      <span>{doneCount}/{rep.entries.length} assets</span>
+                      <span>{photoCount} photos</span>
+                      <span className={`font-sans truncate max-w-[140px] ${approvalInfo.tone}`}>
+                        {approvalInfo.label}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => onSelectReport(rep.id)}
+                        className="min-h-[36px] px-3 py-1.5 text-xs font-medium text-[#1D4ED8] dark:text-[#60A5FA] bg-[#EFF6FF] dark:bg-[#1E3A8A]/40 rounded-md"
+                      >
+                        {rep.status === 'draft' || rep.status === 'sent_back'
+                          ? 'Execute'
+                          : needsAction
+                          ? 'Review Now'
+                          : 'Audit View'}
+                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteReport(rep)}
+                          title="Delete report"
+                          className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center text-[#64748B] dark:text-[#94A3B8] hover:text-[#DC2626] dark:hover:text-[#F87171] border border-[#E2E8F0] dark:border-[#334155] rounded-md"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full table-fixed text-left border-collapse">
             <thead>
               <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#0F172A] text-[11px] font-semibold text-[#475569] dark:text-[#94A3B8]">
@@ -1263,18 +1372,18 @@ function ReportDetailEditor({
   return (
     <div className="space-y-6">
       {/* Top Action Bar (Hidden in Print) */}
-      <div className="no-print bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
+      <div className="no-print bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-3.5 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#334155] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 text-xs font-medium text-[#334155] dark:text-[#CBD5E1] hover:text-[#0F172A] dark:hover:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>All Reports</span>
           </button>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#64748B] dark:text-[#94A3B8]">
               <span className="font-mono font-semibold text-[#1D4ED8] dark:text-[#60A5FA]">
                 {report.reportNumber}
               </span>
@@ -1293,19 +1402,19 @@ function ReportDetailEditor({
                 {formatReportStatusLabel(report.status)}
               </span>
             </div>
-            <h2 className="font-display text-base font-bold text-[#0F172A] dark:text-[#F8FAFC] truncate">
+            <h2 className="font-display text-sm sm:text-base font-bold text-[#0F172A] dark:text-[#F8FAFC] truncate">
               {title}
             </h2>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
           {!isLocked && (
             <button
               type="button"
               onClick={handleSyncLibrary}
               disabled={syncingLib}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncingLib ? 'animate-spin' : ''}`} />
               <span>Sync Assets</span>
@@ -1315,7 +1424,7 @@ function ReportDetailEditor({
           <button
             type="button"
             onClick={() => exportReportsToCsv([report])}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
             <span>CSV</span>
@@ -1324,7 +1433,7 @@ function ReportDetailEditor({
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md whitespace-nowrap shrink-0"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print / Save PDF</span>
@@ -1335,7 +1444,7 @@ function ReportDetailEditor({
               type="button"
               disabled={submitting}
               onClick={() => saveReportMeta(false)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] disabled:opacity-60 rounded-md whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 min-h-[38px] px-3.5 py-1.5 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] disabled:opacity-60 rounded-md whitespace-nowrap shrink-0"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>{submitting ? 'Saving...' : 'Save Changes'}</span>
@@ -1436,14 +1545,14 @@ function ReportDetailEditor({
       )}
 
       {/* Audit Document Header (Editable Title when !isLocked) */}
-      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-6 print-break-inside-avoid">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#E2E8F0] dark:border-[#1E293B] pb-4 mb-4">
-          <div className="flex-1 min-w-[260px]">
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-4 sm:p-6 print-break-inside-avoid">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-[#E2E8F0] dark:border-[#1E293B] pb-4 mb-4">
+          <div className="flex-1 min-w-0 sm:min-w-[260px]">
             <div className="font-mono text-xs text-[#1D4ED8] dark:text-[#60A5FA] font-semibold">
               AUDIT RECORD · {report.reportNumber}
             </div>
             {isLocked ? (
-              <h1 className="font-display text-xl font-bold text-[#0F172A] dark:text-[#F8FAFC] mt-1">
+              <h1 className="font-display text-lg sm:text-xl font-bold text-[#0F172A] dark:text-[#F8FAFC] mt-1">
                 {title}
               </h1>
             ) : (
@@ -1460,7 +1569,7 @@ function ReportDetailEditor({
                       saveReportMeta(true);
                     }
                   }}
-                  className="w-full max-w-2xl px-3 py-1.5 font-display text-lg font-bold bg-[#F8FAFC] dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                  className="w-full max-w-2xl px-3 py-1.5 font-display text-base sm:text-lg font-bold bg-[#F8FAFC] dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
                 />
               </div>
             )}
@@ -1471,7 +1580,7 @@ function ReportDetailEditor({
             </div>
           </div>
 
-          <div className="text-right text-xs text-[#475569] dark:text-[#94A3B8] space-y-1">
+          <div className="text-left sm:text-right text-xs text-[#475569] dark:text-[#94A3B8] space-y-1 shrink-0">
             <div>
               Executor:{' '}
               <span className="font-medium text-[#0F172A] dark:text-[#F8FAFC]">
@@ -2095,9 +2204,9 @@ function EntryRowEditor({
   const entryComments = entry.comments ?? [];
 
   return (
-    <div className="p-5 space-y-4 print-break-inside-avoid">
+    <div className="p-4 sm:p-5 space-y-4 print-break-inside-avoid">
       {/* Asset Header & Condition Selector */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
         <div className="max-w-2xl">
           <div className="flex flex-wrap items-center gap-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
             <span className="font-mono font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
@@ -2144,7 +2253,7 @@ function EntryRowEditor({
                   setCondition(opt.value);
                   patchEntry({ condition: opt.value });
                 }}
-                className={`px-2.5 py-1 text-xs font-medium border rounded transition-colors whitespace-nowrap shrink-0 ${
+                className={`min-h-[38px] px-3 py-1.5 text-xs font-medium border rounded-md transition-colors whitespace-nowrap shrink-0 ${
                   active
                     ? opt.tone
                     : 'text-[#475569] dark:text-[#CBD5E1] border-[#E2E8F0] dark:border-[#334155] bg-white dark:bg-[#0F172A] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B]'

@@ -182,9 +182,9 @@ export function AdminDashboard({
   return (
     <div className="space-y-6">
       {/* Toolbar Row */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] rounded-md border border-[#E2E8F0] dark:border-[#1E293B]">
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <div className="flex items-center gap-3 w-full sm:w-auto min-w-0">
+          <div className="flex items-center gap-1 p-1 bg-[#F1F5F9] dark:bg-[#0F172A] rounded-md border border-[#E2E8F0] dark:border-[#1E293B] overflow-x-auto max-w-full">
             {(
               [
                 { key: 'all', label: 'All Cycles' },
@@ -219,7 +219,7 @@ export function AdminDashboard({
         <button
           type="button"
           onClick={() => exportReportsToCsv(filteredReports)}
-          className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#111827] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md transition-colors whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-2 px-3.5 py-2 min-h-[40px] text-xs font-medium text-[#0F172A] dark:text-[#F8FAFC] bg-white dark:bg-[#111827] hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md transition-colors whitespace-nowrap shrink-0"
         >
           <Download className="w-3.5 h-3.5 text-[#475569] dark:text-[#94A3B8]" />
           <span>Export Reports CSV</span>
@@ -228,7 +228,7 @@ export function AdminDashboard({
 
       {/* Need My Action Queue Card */}
       <div
-        className={`rounded-lg border p-5 transition-colors ${
+        className={`rounded-lg border p-4 sm:p-5 transition-colors ${
           needMyActionReports.length > 0
             ? 'bg-[#FFFBEB]/80 dark:bg-[#78350F]/20 border-[#FDE68A] dark:border-[#B45309]'
             : 'bg-white dark:bg-[#111827] border-[#E2E8F0] dark:border-[#1E293B]'
@@ -307,65 +307,65 @@ export function AdminDashboard({
         )}
       </div>
 
-      {/* 4-Column KPI Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-5">
-          <div className="flex items-center justify-between text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">
-            <span>Inspection Compliance</span>
-            <CheckCircle2 className="w-4 h-4 text-[#16A34A] dark:text-[#4ADE80]" />
+      {/* 4-Column KPI Strip (2-col compact on mobile) */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-3.5 sm:p-5">
+          <div className="flex items-center justify-between text-[11px] sm:text-xs font-medium text-[#64748B] dark:text-[#94A3B8] gap-1">
+            <span className="truncate">Inspection Compliance</span>
+            <CheckCircle2 className="w-4 h-4 text-[#16A34A] dark:text-[#4ADE80] shrink-0" />
           </div>
-          <div className="mt-2 font-mono text-3xl font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+          <div className="mt-1.5 sm:mt-2 font-mono text-2xl sm:text-3xl font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
             {stats.complianceRate}%
           </div>
-          <div className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
+          <div className="mt-1.5 sm:mt-2 text-[11px] sm:text-xs text-[#64748B] dark:text-[#94A3B8]">
             <span className="font-mono tabular-nums">{stats.evaluatedCount}</span> of{' '}
-            <span className="font-mono tabular-nums">{stats.totalEntryCount}</span> assets evaluated
+            <span className="font-mono tabular-nums">{stats.totalEntryCount}</span> evaluated
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-5">
-          <div className="flex items-center justify-between text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">
-            <span>Inspection Reports</span>
-            <FileCheck2 className="w-4 h-4 text-[#1D4ED8] dark:text-[#60A5FA]" />
+        <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-3.5 sm:p-5">
+          <div className="flex items-center justify-between text-[11px] sm:text-xs font-medium text-[#64748B] dark:text-[#94A3B8] gap-1">
+            <span className="truncate">Inspection Reports</span>
+            <FileCheck2 className="w-4 h-4 text-[#1D4ED8] dark:text-[#60A5FA] shrink-0" />
           </div>
-          <div className="mt-2 font-mono text-3xl font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+          <div className="mt-1.5 sm:mt-2 font-mono text-2xl sm:text-3xl font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
             {filteredReports.length}
           </div>
-          <div className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
-            <span className="font-mono tabular-nums">{stats.submittedCount}</span> routed / approved
+          <div className="mt-1.5 sm:mt-2 text-[11px] sm:text-xs text-[#64748B] dark:text-[#94A3B8]">
+            <span className="font-mono tabular-nums">{stats.submittedCount}</span> routed
             <span aria-hidden="true"> · </span>
-            <span className="font-mono tabular-nums">{stats.draftCount}</span> draft / sent back
+            <span className="font-mono tabular-nums">{stats.draftCount}</span> open
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-5">
-          <div className="flex items-center justify-between text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">
-            <span>Flagged Conditions</span>
-            <AlertTriangle className="w-4 h-4 text-[#D97706] dark:text-[#FBBF24]" />
+        <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-3.5 sm:p-5">
+          <div className="flex items-center justify-between text-[11px] sm:text-xs font-medium text-[#64748B] dark:text-[#94A3B8] gap-1">
+            <span className="truncate">Flagged Conditions</span>
+            <AlertTriangle className="w-4 h-4 text-[#D97706] dark:text-[#FBBF24] shrink-0" />
           </div>
-          <div className="mt-2 font-mono text-3xl font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+          <div className="mt-1.5 sm:mt-2 font-mono text-2xl sm:text-3xl font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
             {stats.attentionCount}
           </div>
-          <div className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
+          <div className="mt-1.5 sm:mt-2 text-[11px] sm:text-xs text-[#64748B] dark:text-[#94A3B8]">
             <span className="text-[#DC2626] dark:text-[#F87171] font-medium font-mono tabular-nums">
               {stats.criticalCount} critical
             </span>
             <span aria-hidden="true"> · </span>
-            <span>Requires corrective follow-up</span>
+            <span className="hidden sm:inline">Requires corrective follow-up</span>
+            <span className="sm:hidden">follow-up</span>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-5">
-          <div className="flex items-center justify-between text-xs font-medium text-[#64748B] dark:text-[#94A3B8]">
-            <span>Blocked Project Activities</span>
-            <Ban className="w-4 h-4 text-[#DC2626] dark:text-[#F87171]" />
+        <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-3.5 sm:p-5">
+          <div className="flex items-center justify-between text-[11px] sm:text-xs font-medium text-[#64748B] dark:text-[#94A3B8] gap-1">
+            <span className="truncate">Blocked Activities</span>
+            <Ban className="w-4 h-4 text-[#DC2626] dark:text-[#F87171] shrink-0" />
           </div>
-          <div className="mt-2 font-mono text-3xl font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
+          <div className="mt-1.5 sm:mt-2 font-mono text-2xl sm:text-3xl font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums">
             {stats.blockedTaskCount}
           </div>
-          <div className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
-            <span className="font-mono tabular-nums">{stats.activeBlockerLinks}</span> active blocker
-            dependencies
+          <div className="mt-1.5 sm:mt-2 text-[11px] sm:text-xs text-[#64748B] dark:text-[#94A3B8]">
+            <span className="font-mono tabular-nums">{stats.activeBlockerLinks}</span> active blockers
           </div>
         </div>
       </div>
@@ -524,7 +524,63 @@ export function AdminDashboard({
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile Compact Report Cards */}
+          <div className="md:hidden divide-y divide-[#E2E8F0] dark:divide-[#1E293B]">
+            {filteredReports.length === 0 ? (
+              <div className="py-8 px-4 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                No inspection reports found for this filter.
+              </div>
+            ) : (
+              filteredReports.slice(0, 6).map((rep) => {
+                const done = rep.entries.filter((e) => e.condition !== 'na').length;
+                const total = rep.entries.length;
+                const photosCount = rep.entries.reduce((acc, e) => acc + e.photos.length, 0);
+
+                return (
+                  <button
+                    key={rep.id}
+                    type="button"
+                    onClick={() => onOpenReport(rep.id)}
+                    className="w-full text-left p-3.5 hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B]/60 transition-colors space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-mono font-semibold text-[#1D4ED8] dark:text-[#60A5FA] truncate">
+                        {rep.reportNumber}
+                      </span>
+                      <span
+                        className={`font-semibold shrink-0 ${
+                          rep.overallCondition === 'critical'
+                            ? 'text-[#DC2626] dark:text-[#F87171]'
+                            : rep.overallCondition === 'needs_attention'
+                            ? 'text-[#D97706] dark:text-[#FBBF24]'
+                            : 'text-[#16A34A] dark:text-[#4ADE80]'
+                        }`}
+                      >
+                        {formatConditionLabel(rep.overallCondition)}
+                      </span>
+                    </div>
+                    <div className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] truncate">
+                      {rep.title}
+                    </div>
+                    <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8] truncate">
+                      {rep.facilityArea} · {formatCycleLabel(rep.cycleType, true)} · {rep.inspectorName}
+                    </div>
+                    <div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-[#475569] dark:text-[#94A3B8]">
+                      <span className="font-mono tabular-nums">
+                        {done}/{total} assets · {photosCount} photos
+                      </span>
+                      <span className="font-medium text-[#0F172A] dark:text-[#F8FAFC] truncate">
+                        {formatReportStatusLabel(rep.status)} ·{' '}
+                        {formatShortDate(rep.submittedAt ?? rep.updatedAt)}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full table-fixed text-left border-collapse">
               <thead>
                 <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#0F172A] text-[11px] font-semibold text-[#475569] dark:text-[#94A3B8]">

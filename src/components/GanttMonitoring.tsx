@@ -17,6 +17,7 @@ import {
   Plus,
   Search,
   Send,
+  Settings,
   Table2,
   Trash2,
   X,
@@ -149,6 +150,7 @@ export function GanttMonitoring({
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [showNewBlockerModal, setShowNewBlockerModal] = useState(false);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [showProjectSettingsModal, setShowProjectSettingsModal] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState<{
     taskId: string;
     pendingUpdates: Partial<ProjectTask>;
@@ -210,7 +212,14 @@ export function GanttMonitoring({
     action: 115,
   });
 
-  const totalWbsWidth = wbsCols.wbs + wbsCols.activity + wbsCols.dates + wbsCols.progress;
+  const activeProject = useMemo(
+    () => projects.find((p) => p.id === selectedProjectId) ?? projects[0] ?? null,
+    [projects, selectedProjectId]
+  );
+
+  const useWbs = activeProject?.useWbs ?? true;
+  const totalWbsWidth = (useWbs ? wbsCols.wbs : 0) + wbsCols.activity + wbsCols.dates + wbsCols.progress;
+  const effectiveWbsPaneWidth = useWbs ? wbsPaneWidth : Math.max(320, wbsPaneWidth - wbsCols.wbs);
 
   function startWbsColumnResize(
     key: 'wbs' | 'activity' | 'dates' | 'progress',
@@ -264,11 +273,6 @@ export function GanttMonitoring({
   function handleTaskHoverLeave() {
     setHoverCard(null);
   }
-
-  const activeProject = useMemo(
-    () => projects.find((p) => p.id === selectedProjectId) ?? projects[0] ?? null,
-    [projects, selectedProjectId]
-  );
 
   const projectTasks = useMemo(() => {
     if (!activeProject) return [];
@@ -645,7 +649,7 @@ export function GanttMonitoring({
         blockerTaskId: sourceTask.id,
         blockedTaskId: targetTask.id,
         dependencyType: depType,
-        blockerReason: `Waiting on ${sourceTask.wbsCode} ${sourceTask.title}`,
+        blockerReason: `Waiting on ${useWbs ? `${sourceTask.wbsCode} ` : ''}${sourceTask.title}`,
       });
     }
 
@@ -818,9 +822,79 @@ export function GanttMonitoring({
             </span>
           </div>
 
-          {/* Project History Resizable Table */}
+          {/* Project History Resizable Table (Desktop) & Compact Cards (Mobile) */}
           <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
+            {/* Mobile Compact Cards */}
+            <div className="md:hidden divide-y divide-[#E2E8F0] dark:divide-[#1E293B]">
+              {projectHistoryRows.length === 0 ? (
+                <div className="py-10 px-4 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
+                  No maintenance projects match your filters.
+                </div>
+              ) : (
+                projectHistoryRows.map((row) => {
+                  const isActive = activeProject?.id === row.project.id;
+                  return (
+                    <button
+                      key={row.project.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedProjectId(row.project.id);
+                        setSelectedTaskId(null);
+                        setSubTab('gantt');
+                      }}
+                      className={`w-full text-left p-4 space-y-2.5 transition-colors ${
+                        isActive
+                          ? 'bg-[#EFF6FF]/60 dark:bg-[#1E3A8A]/25'
+                          : 'hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B]/60'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-mono text-xs font-semibold text-[#1D4ED8] dark:text-[#60A5FA]">
+                            {row.project.code} · {formatCycleLabel(row.project.cycleType)}
+                          </div>
+                          <div className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] mt-0.5 leading-snug">
+                            {row.project.name}
+                          </div>
+                        </div>
+                        <span className="font-mono text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums shrink-0">
+                          {row.avgProgress}%
+                        </span>
+                      </div>
+
+                      <div className="w-full h-1.5 bg-[#F1F5F9] dark:bg-[#1E293B] rounded-sm overflow-hidden">
+                        <div
+                          className={`h-full ${
+                            row.avgProgress === 100
+                              ? 'bg-[#16A34A]'
+                              : 'bg-[#1D4ED8] dark:bg-[#3B82F6]'
+                          }`}
+                          style={{ width: `${row.avgProgress}%` }}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
+                        <span className="font-mono tabular-nums">
+                          {formatShortDate(row.project.startDate)} – {formatShortDate(row.project.endDate)} ·{' '}
+                          {row.completedTasks}/{row.totalTasks} done
+                        </span>
+                        <span className="font-mono tabular-nums">
+                          {row.unresolvedBlockers > 0 ? (
+                            <span className="text-[#DC2626] dark:text-[#F87171] font-semibold">
+                              {row.unresolvedBlockers} active blockers
+                            </span>
+                          ) : (
+                            <span className="text-[#16A34A] dark:text-[#4ADE80]">Clear</span>
+                          )}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full table-fixed text-left border-collapse">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#0F172A] text-[11px] font-semibold text-[#475569] dark:text-[#94A3B8]">
@@ -982,17 +1056,17 @@ export function GanttMonitoring({
       ) : (
         <>
           {/* Active Project Header & Toolbar */}
-          <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-4 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <FolderKanban className="w-4 h-4 text-[#1D4ED8] dark:text-[#60A5FA]" />
+          <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
+              <div className="flex items-center gap-2 flex-1 sm:flex-initial min-w-0">
+                <FolderKanban className="w-4 h-4 text-[#1D4ED8] dark:text-[#60A5FA] shrink-0" />
                 <select
                   value={activeProject?.id ?? ''}
                   onChange={(e) => {
                     setSelectedProjectId(e.target.value);
                     setSelectedTaskId(null);
                   }}
-                  className="px-3 py-1.5 text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
+                  className="flex-1 sm:flex-initial min-w-0 px-3 py-1.5 text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#334155] rounded-md focus:outline-none focus:border-[#1D4ED8]"
                 >
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -1000,6 +1074,17 @@ export function GanttMonitoring({
                     </option>
                   ))}
                 </select>
+                {canManageProjects && activeProject && (
+                  <button
+                    type="button"
+                    onClick={() => setShowProjectSettingsModal(true)}
+                    title="Project Settings & WBS Numbering"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[#334155] dark:text-[#CBD5E1] bg-[#F8FAFC] dark:bg-[#0F172A] hover:bg-[#F1F5F9] dark:hover:bg-[#1E293B] border border-[#CBD5E1] dark:border-[#334155] rounded-md shrink-0"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Project Settings</span>
+                  </button>
+                )}
               </div>
 
               {/* View Mode Switcher: Gantt Chart | Table View */}
@@ -1111,7 +1196,9 @@ export function GanttMonitoring({
                   <p className="text-sm text-[#475569] dark:text-[#94A3B8]">
                     {blockersOnly
                       ? 'No blocked activities or active blocker chains in this project.'
-                      : 'No WBS activities scheduled yet for this project.'}
+                      : useWbs
+                      ? 'No WBS activities scheduled yet for this project.'
+                      : 'No activities scheduled yet for this project.'}
                   </p>
                   {(blockersOnly || canManageProjects) && (
                     <button
@@ -1124,24 +1211,130 @@ export function GanttMonitoring({
                   )}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full table-fixed text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#0F172A] text-[11px] font-semibold text-[#475569] dark:text-[#94A3B8]">
-                        <ResizableTh
-                          width={tableCols.wbs}
-                          onStartResize={(e) => resizeTableCol('wbs', e)}
-                          className="py-3 px-4"
+                <>
+                  {/* Mobile Compact Activity Cards */}
+                  <div className="md:hidden divide-y divide-[#E2E8F0] dark:divide-[#1E293B]">
+                    {visibleTasks.map((task) => {
+                      const activeUpstream = activeBlockersByBlockedId.get(task.id) ?? [];
+                      const firstBlockerTask = activeUpstream[0]
+                        ? taskById.get(activeUpstream[0].blockerTaskId)
+                        : null;
+                      const isBlocked = task.status === 'blocked';
+                      const durationDays = getDurationDays(task.startDate, task.endDate);
+                      const taskEditable = canEditTask(task);
+                      const progressChoices = PROGRESS_PRESETS.includes(task.progress)
+                        ? PROGRESS_PRESETS
+                        : [...PROGRESS_PRESETS, task.progress].sort((a, b) => a - b);
+
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => setSelectedTaskId(task.id)}
+                          className={`p-4 space-y-3 cursor-pointer ${
+                            isBlocked ? 'bg-[#FEF2F2]/40 dark:bg-[#7F1D1D]/15' : ''
+                          }`}
                         >
-                          WBS
-                        </ResizableTh>
-                        <ResizableTh
-                          width={tableCols.activity}
-                          onStartResize={(e) => resizeTableCol('activity', e)}
-                          className="py-3 px-4"
-                        >
-                          Activity &amp; Blockers
-                        </ResizableTh>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              {useWbs && (
+                                <div className="font-mono text-[11px] font-semibold text-[#1D4ED8] dark:text-[#60A5FA]">
+                                  WBS {task.wbsCode}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {task.taskType === 'milestone' && (
+                                  <Diamond className="w-3 h-3 text-[#D97706] shrink-0 fill-[#D97706]/20" />
+                                )}
+                                <span className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC] leading-snug">
+                                  {task.title}
+                                </span>
+                              </div>
+                              <div className="text-xs text-[#64748B] dark:text-[#94A3B8] mt-0.5 font-mono tabular-nums">
+                                {formatShortDate(task.startDate)} → {formatShortDate(task.endDate)} ({durationDays}d) ·{' '}
+                                {task.assigneeName || 'Unassigned'}
+                              </div>
+                            </div>
+                            <span className="font-mono text-xs font-bold text-[#0F172A] dark:text-[#F8FAFC] tabular-nums shrink-0">
+                              {task.progress}%
+                            </span>
+                          </div>
+
+                          {firstBlockerTask && isBlocked && (
+                            <div className="text-[11px] text-[#DC2626] dark:text-[#F87171] flex items-center gap-1">
+                              <Ban className="w-3 h-3 shrink-0" />
+                              <span className="truncate">
+                                Blocked by {useWbs ? `${firstBlockerTask.wbsCode} ` : ''}{firstBlockerTask.title}
+                              </span>
+                            </div>
+                          )}
+
+                          <div
+                            className="grid grid-cols-2 gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <select
+                              value={task.status}
+                              disabled={!taskEditable}
+                              onChange={(e) =>
+                                patchTask(task.id, { status: e.target.value as TaskStatus })
+                              }
+                              className="min-h-[40px] px-2.5 py-1.5 text-xs font-medium rounded border bg-white dark:bg-[#0F172A] border-[#CBD5E1] dark:border-[#334155] text-[#0F172A] dark:text-[#F8FAFC] disabled:opacity-60"
+                            >
+                              <option value="not_started">Not Started</option>
+                              <option value="in_progress">In Progress</option>
+                              <option value="blocked">Blocked</option>
+                              <option value="completed">Completed</option>
+                            </select>
+                            <select
+                              value={task.progress}
+                              disabled={!taskEditable}
+                              onChange={(e) => {
+                                const nextProg = Number(e.target.value);
+                                const nextStatus =
+                                  nextProg === 100 && task.status !== 'completed'
+                                    ? 'completed'
+                                    : nextProg > 0 && nextProg < 100 && task.status === 'not_started'
+                                    ? 'in_progress'
+                                    : undefined;
+                                patchTask(task.id, {
+                                  progress: nextProg,
+                                  ...(nextStatus ? { status: nextStatus } : {}),
+                                });
+                              }}
+                              className="min-h-[40px] px-2.5 py-1.5 font-mono text-xs bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded disabled:opacity-60"
+                            >
+                              {progressChoices.map((pct) => (
+                                <option key={pct} value={pct}>
+                                  {pct}% Done
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full table-fixed text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#0F172A] text-[11px] font-semibold text-[#475569] dark:text-[#94A3B8]">
+                          {useWbs && (
+                            <ResizableTh
+                              width={tableCols.wbs}
+                              onStartResize={(e) => resizeTableCol('wbs', e)}
+                              className="py-3 px-4"
+                            >
+                              WBS
+                            </ResizableTh>
+                          )}
+                          <ResizableTh
+                            width={tableCols.activity}
+                            onStartResize={(e) => resizeTableCol('activity', e)}
+                            className="py-3 px-4"
+                          >
+                            Activity &amp; Blockers
+                          </ResizableTh>
                         <ResizableTh
                           width={tableCols.assignee}
                           onStartResize={(e) => resizeTableCol('assignee', e)}
@@ -1231,9 +1424,11 @@ export function GanttMonitoring({
                                 : 'hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B]/60'
                             }`}
                           >
-                            <td className="py-3 px-4 font-mono text-[#475569] dark:text-[#CBD5E1] tabular-nums truncate">
-                              {task.wbsCode}
-                            </td>
+                            {useWbs && (
+                              <td className="py-3 px-4 font-mono text-[#475569] dark:text-[#CBD5E1] tabular-nums truncate">
+                                {task.wbsCode}
+                              </td>
+                            )}
                             <td className={`py-3 px-4 min-w-0 ${task.parentId ? 'pl-7' : ''}`}>
                               <div className="flex items-center gap-1.5 min-w-0">
                                 {task.taskType === 'milestone' && (
@@ -1253,7 +1448,8 @@ export function GanttMonitoring({
                                 <div className="text-[11px] text-[#DC2626] dark:text-[#F87171] truncate flex items-center gap-1 mt-0.5">
                                   <Ban className="w-2.5 h-2.5 shrink-0" />
                                   <span className="truncate">
-                                    Blocked by {firstBlockerTask.wbsCode} {firstBlockerTask.title}
+                                    Blocked by {useWbs ? `${firstBlockerTask.wbsCode} ` : ''}
+                                    {firstBlockerTask.title}
                                   </span>
                                 </div>
                               )}
@@ -1261,7 +1457,8 @@ export function GanttMonitoring({
                                 <div className="text-[11px] text-[#B45309] dark:text-[#FBBF24] truncate flex items-center gap-1 mt-0.5">
                                   <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
                                   <span className="truncate">
-                                    Override · Dep: {firstBlockerTask.wbsCode}
+                                    Override · Dep:{' '}
+                                    {useWbs ? firstBlockerTask.wbsCode : firstBlockerTask.title}
                                   </span>
                                 </div>
                               )}
@@ -1421,15 +1618,19 @@ export function GanttMonitoring({
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </div>
           ) : (
             <>
               {/* Direct Manipulation Hint Strip */}
               <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
-                <div>
+                <div className="hidden sm:block">
                   Hover any activity for quick info · Drag column or split-pane dividers to resize ·
                   Drag bar edges/body to schedule · Drag ports to link dependencies
+                </div>
+                <div className="sm:hidden">
+                  Tap an activity to edit, or swipe the timeline horizontally
                 </div>
                 <div className="flex items-center gap-4 shrink-0">
                   <span className="inline-flex items-center gap-1.5">
@@ -1447,14 +1648,16 @@ export function GanttMonitoring({
                 </div>
               </div>
 
-              {/* Split MS Project Workspace: Resizable WBS Table + Interactive Gantt Timeline */}
+              {/* Split MS Project Workspace: Resizable Activity Table + Interactive Gantt Timeline */}
               <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#1E293B] rounded-lg overflow-hidden">
                 {visibleTasks.length === 0 ? (
                   <div className="py-14 px-6 text-center">
                     <p className="text-sm text-[#475569] dark:text-[#94A3B8]">
                       {blockersOnly
                         ? 'No blocked activities or active blocker chains in this project.'
-                        : 'No WBS activities scheduled yet for this project.'}
+                        : useWbs
+                        ? 'No WBS activities scheduled yet for this project.'
+                        : 'No activities scheduled yet for this project.'}
                     </p>
                     {(blockersOnly || canManageProjects) && (
                       <button
@@ -1470,9 +1673,9 @@ export function GanttMonitoring({
                   </div>
                 ) : (
                   <div className="flex flex-col lg:flex-row">
-                    {/* Left Pane: Resizable WBS Task Grid */}
+                    {/* Left Pane: Resizable Activity Grid */}
                     <div
-                      style={{ '--wbs-pane-width': `${wbsPaneWidth}px` } as React.CSSProperties}
+                      style={{ '--wbs-pane-width': `${effectiveWbsPaneWidth}px` } as React.CSSProperties}
                       className="w-full lg:w-[var(--wbs-pane-width)] shrink-0 overflow-x-auto border-b lg:border-b-0 border-[#E2E8F0] dark:border-[#1E293B]"
                     >
                       <div style={{ minWidth: totalWbsWidth }}>
@@ -1480,17 +1683,19 @@ export function GanttMonitoring({
                           style={{ height: HEADER_HEIGHT }}
                           className="flex items-center bg-[#F8FAFC] dark:bg-[#0F172A] border-b border-[#E2E8F0] dark:border-[#1E293B] text-[11px] font-semibold text-[#475569] dark:text-[#94A3B8] select-none"
                         >
-                          <div
-                            style={{ width: wbsCols.wbs }}
-                            className="relative h-full flex items-center px-3 shrink-0"
-                          >
-                            <span className="truncate">WBS</span>
+                          {useWbs && (
                             <div
-                              onPointerDown={(e) => startWbsColumnResize('wbs', e)}
-                              title="Drag to resize WBS column"
-                              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-[#1D4ED8]/30 dark:hover:bg-[#60A5FA]/35 active:bg-[#1D4ED8]/50"
-                            />
-                          </div>
+                              style={{ width: wbsCols.wbs }}
+                              className="relative h-full flex items-center px-3 shrink-0"
+                            >
+                              <span className="truncate">WBS</span>
+                              <div
+                                onPointerDown={(e) => startWbsColumnResize('wbs', e)}
+                                title="Drag to resize WBS column"
+                                className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-[#1D4ED8]/30 dark:hover:bg-[#60A5FA]/35 active:bg-[#1D4ED8]/50"
+                              />
+                            </div>
+                          )}
                           <div
                             style={{ width: wbsCols.activity }}
                             className="relative h-full flex items-center px-3 shrink-0"
@@ -1552,12 +1757,14 @@ export function GanttMonitoring({
                                     : 'hover:bg-[#F8FAFC] dark:hover:bg-[#1E293B]/60'
                                 }`}
                               >
-                                <div
-                                  style={{ width: wbsCols.wbs }}
-                                  className="px-3 font-mono text-xs text-[#475569] dark:text-[#CBD5E1] tabular-nums truncate shrink-0"
-                                >
-                                  {task.wbsCode}
-                                </div>
+                                {useWbs && (
+                                  <div
+                                    style={{ width: wbsCols.wbs }}
+                                    className="px-3 font-mono text-xs text-[#475569] dark:text-[#CBD5E1] tabular-nums truncate shrink-0"
+                                  >
+                                    {task.wbsCode}
+                                  </div>
+                                )}
 
                                 <div
                                   style={{ width: wbsCols.activity }}
@@ -1581,14 +1788,16 @@ export function GanttMonitoring({
                                     <div className="text-[11px] text-[#DC2626] dark:text-[#F87171] truncate flex items-center gap-1">
                                       <Ban className="w-2.5 h-2.5 shrink-0" />
                                       <span className="truncate">
-                                        Blocked by {firstBlockerTask.wbsCode} {firstBlockerTask.title}
+                                        Blocked by {useWbs ? `${firstBlockerTask.wbsCode} ` : ''}
+                                        {firstBlockerTask.title}
                                       </span>
                                     </div>
                                   ) : firstBlockerTask && task.manualOverride ? (
                                     <div className="text-[11px] text-[#B45309] dark:text-[#FBBF24] truncate flex items-center gap-1">
                                       <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
                                       <span className="truncate">
-                                        Override · Dep: {firstBlockerTask.wbsCode}
+                                        Override · Dep:{' '}
+                                        {useWbs ? firstBlockerTask.wbsCode : firstBlockerTask.title}
                                       </span>
                                     </div>
                                   ) : (
@@ -1812,7 +2021,7 @@ export function GanttMonitoring({
                                       />
                                     )}
                                     <span className="text-[11px] font-medium text-[#334155] dark:text-[#CBD5E1] whitespace-nowrap">
-                                      {task.wbsCode} {task.title}
+                                      {useWbs ? `${task.wbsCode} ` : ''}{task.title}
                                     </span>
                                   </div>
                                 ) : (
@@ -2117,7 +2326,86 @@ export function GanttMonitoring({
               )}
             </div>
 
-            <div className="overflow-x-auto">
+            {/* Mobile Compact Blocker Cards */}
+            <div className="md:hidden divide-y divide-[#E2E8F0] dark:divide-[#1E293B]">
+              {projectBlockers.length === 0 ? (
+                <div className="py-8 px-4 text-center text-xs text-[#64748B] dark:text-[#94A3B8]">
+                  No blocker links defined yet. Tap an activity to add blockers.
+                </div>
+              ) : (
+                projectBlockers.map((b) => {
+                  const upstream = taskById.get(b.blockerTaskId);
+                  const downstream = taskById.get(b.blockedTaskId);
+                  if (!upstream || !downstream) return null;
+
+                  return (
+                    <div key={b.id} className="p-4 space-y-2.5 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                          {b.dependencyType === 'FS' ? 'Finish → Start' : 'Start → Start'}
+                        </span>
+                        {b.isResolved ? (
+                          <span className="text-[#16A34A] dark:text-[#4ADE80] font-semibold">
+                            Cleared
+                          </span>
+                        ) : downstream.manualOverride ? (
+                          <span className="text-[#B45309] dark:text-[#FBBF24] font-semibold">
+                            Manual Override
+                          </span>
+                        ) : (
+                          <span className="text-[#DC2626] dark:text-[#F87171] font-semibold">
+                            Active Blocker
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTaskId(upstream.id)}
+                          className="text-left block w-full font-semibold text-[#0F172A] dark:text-[#F8FAFC]"
+                        >
+                          Upstream: {useWbs ? `${upstream.wbsCode} ` : ''}{upstream.title} ({upstream.progress}%)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTaskId(downstream.id)}
+                          className="text-left block w-full text-[#334155] dark:text-[#CBD5E1]"
+                        >
+                          Blocks: {useWbs ? `${downstream.wbsCode} ` : ''}{downstream.title}
+                        </button>
+                      </div>
+
+                      {b.blockerReason && (
+                        <div className="text-[#64748B] dark:text-[#94A3B8]">{b.blockerReason}</div>
+                      )}
+
+                      {canManageProjects && (
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => resolveOrRemoveBlocker(b, 'resolve')}
+                            className="min-h-[38px] px-3 py-1.5 text-xs font-medium text-[#1D4ED8] dark:text-[#60A5FA] bg-[#EFF6FF] dark:bg-[#1E3A8A]/30 rounded-md"
+                          >
+                            {b.isResolved ? 'Re-open' : 'Mark Cleared'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => resolveOrRemoveBlocker(b, 'delete')}
+                            className="min-h-[38px] px-2.5 py-1.5 text-[#DC2626] dark:text-[#F87171] bg-[#FEF2F2] dark:bg-[#7F1D1D]/25 rounded-md"
+                            title="Remove dependency"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full table-fixed text-left border-collapse">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] dark:border-[#1E293B] bg-[#F8FAFC] dark:bg-[#0F172A] text-[11px] font-semibold text-[#475569] dark:text-[#94A3B8]">
@@ -2194,9 +2482,11 @@ export function GanttMonitoring({
                               onClick={() => setSelectedTaskId(upstream.id)}
                               className="font-medium text-[#0F172A] dark:text-[#F8FAFC] hover:text-[#1D4ED8] dark:hover:text-[#60A5FA] text-left block w-full truncate"
                             >
-                              <span className="font-mono text-[#475569] dark:text-[#94A3B8]">
-                                {upstream.wbsCode}
-                              </span>{' '}
+                              {useWbs && (
+                                <span className="font-mono text-[#475569] dark:text-[#94A3B8]">
+                                  {upstream.wbsCode}{' '}
+                                </span>
+                              )}
                               {upstream.title}
                             </button>
                             <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-mono truncate">
@@ -2212,9 +2502,11 @@ export function GanttMonitoring({
                               onClick={() => setSelectedTaskId(downstream.id)}
                               className="font-medium text-[#0F172A] dark:text-[#F8FAFC] hover:text-[#1D4ED8] dark:hover:text-[#60A5FA] text-left block w-full truncate"
                             >
-                              <span className="font-mono text-[#475569] dark:text-[#94A3B8]">
-                                {downstream.wbsCode}
-                              </span>{' '}
+                              {useWbs && (
+                                <span className="font-mono text-[#475569] dark:text-[#94A3B8]">
+                                  {downstream.wbsCode}{' '}
+                                </span>
+                              )}
                               {downstream.title}
                             </button>
                             <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-mono truncate">
@@ -2277,6 +2569,7 @@ export function GanttMonitoring({
       {hoveredTask && hoverCard && !barDrag && !linkDrag && (
         <ActivityHoverPopover
           task={hoveredTask}
+          useWbs={useWbs}
           x={hoverCard.x}
           y={hoverCard.y}
           incomingBlockers={activeBlockersByBlockedId.get(hoveredTask.id) ?? []}
@@ -2289,6 +2582,7 @@ export function GanttMonitoring({
       {selectedTask && (
         <TaskInspectorDrawer
           task={selectedTask}
+          useWbs={useWbs}
           allTasks={projectTasks}
           blockers={projectBlockers}
           historyEntries={taskHistory.filter((h) => h.taskId === selectedTask.id)}
@@ -2325,6 +2619,20 @@ export function GanttMonitoring({
         />
       )}
 
+      {showProjectSettingsModal && activeProject && canManageProjects && (
+        <ProjectSettingsModal
+          project={activeProject}
+          token={token}
+          onClose={() => setShowProjectSettingsModal(false)}
+          onUpdated={async () => {
+            setShowProjectSettingsModal(false);
+            await onSyncComplete();
+            onNotify('Updated project settings.');
+          }}
+          onNotify={onNotify}
+        />
+      )}
+
       {showNewTaskModal && activeProject && canManageProjects && (
         <NewTaskModal
           project={activeProject}
@@ -2336,7 +2644,11 @@ export function GanttMonitoring({
           onCreated={async () => {
             setShowNewTaskModal(false);
             await onSyncComplete();
-            onNotify('Added new WBS activity to project schedule.');
+            onNotify(
+              useWbs
+                ? 'Added new WBS activity to project schedule.'
+                : 'Added new activity to project schedule.'
+            );
           }}
           onNotify={onNotify}
         />
@@ -2345,6 +2657,7 @@ export function GanttMonitoring({
       {showNewBlockerModal && activeProject && (
         <NewBlockerModal
           projectId={activeProject.id}
+          useWbs={useWbs}
           tasks={projectTasks}
           token={token}
           onClose={() => setShowNewBlockerModal(false)}
@@ -2388,7 +2701,8 @@ export function GanttMonitoring({
                   className="w-full text-left flex items-center justify-between text-xs text-[#7F1D1D] dark:text-[#FECACA] hover:underline"
                 >
                   <span>
-                    <span className="font-mono">{bt.wbs_code}</span> {bt.title}
+                    {useWbs && <span className="font-mono">{bt.wbs_code} </span>}
+                    {bt.title}
                     {bt.status && (
                       <span className="ml-1.5 text-[10px] opacity-80">
                         ({formatTaskStatusLabel(bt.status)})
@@ -2437,6 +2751,7 @@ type DrawerTab = 'details' | 'history' | 'comments';
 
 function TaskInspectorDrawer({
   task,
+  useWbs,
   allTasks,
   blockers,
   historyEntries,
@@ -2457,6 +2772,7 @@ function TaskInspectorDrawer({
   onNotify,
 }: {
   task: ProjectTask;
+  useWbs: boolean;
   allTasks: ProjectTask[];
   blockers: TaskBlocker[];
   historyEntries: TaskHistoryEntry[];
@@ -2614,7 +2930,7 @@ function TaskInspectorDrawer({
       }
       setCommentBody('');
       await onSyncComplete();
-      onNotify(`Posted comment on ${task.wbsCode}.`);
+      onNotify(`Posted comment on ${useWbs ? task.wbsCode : task.title}.`);
     } catch {
       onNotify('Network error posting comment.', 'error');
     } finally {
@@ -2652,7 +2968,8 @@ function TaskInspectorDrawer({
         <div className="px-6 py-4 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between shrink-0">
           <div className="min-w-0">
             <div className="font-mono text-xs text-[#1D4ED8] dark:text-[#60A5FA] font-semibold">
-              WBS {task.wbsCode} · {task.taskType}
+              {useWbs ? `WBS ${task.wbsCode} · ` : ''}
+              {task.taskType}
               {task.manualOverride && (
                 <span className="ml-2 text-[#B45309] dark:text-[#FBBF24]">· Manual Override</span>
               )}
@@ -2723,20 +3040,22 @@ function TaskInspectorDrawer({
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                    WBS
-                  </label>
-                  <input
-                    type="text"
-                    disabled={!canEditThisTask || !canManageProjects}
-                    value={wbsCode}
-                    onChange={(e) => setWbsCode(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md disabled:opacity-65"
-                  />
-                </div>
-                <div className="col-span-2">
+              <div className={useWbs ? 'grid grid-cols-3 gap-3' : 'grid grid-cols-1 gap-3'}>
+                {useWbs && (
+                  <div>
+                    <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                      WBS
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!canEditThisTask || !canManageProjects}
+                      value={wbsCode}
+                      onChange={(e) => setWbsCode(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md disabled:opacity-65"
+                    />
+                  </div>
+                )}
+                <div className={useWbs ? 'col-span-2' : ''}>
                   <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
                     Assignee (Registered User)
                   </label>
@@ -2912,7 +3231,8 @@ function TaskInspectorDrawer({
                   <div className="p-2.5 bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-md flex items-center justify-between gap-3">
                     <div className="text-xs min-w-0">
                       <div className="font-medium text-[#0F172A] dark:text-[#F8FAFC] truncate">
-                        Parent: {parentTask.wbsCode} {parentTask.title}
+                        Parent: {useWbs ? `${parentTask.wbsCode} ` : ''}
+                        {parentTask.title}
                       </div>
                       <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
                         Status: {formatTaskStatusLabel(parentTask.status)}
@@ -2932,7 +3252,7 @@ function TaskInspectorDrawer({
                               blockerTaskId: parentTask.id,
                               blockedTaskId: task.id,
                               dependencyType: 'FS',
-                              blockerReason: `Depends on parent ${parentTask.wbsCode} ${parentTask.title}`,
+                              blockerReason: `Depends on parent ${useWbs ? `${parentTask.wbsCode} ` : ''}${parentTask.title}`,
                             });
                           }
                         }}
@@ -2986,7 +3306,8 @@ function TaskInspectorDrawer({
                     >
                       {candidateTasks.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.wbsCode} · {t.title} ({formatTaskStatusLabel(t.status)})
+                          {useWbs ? `${t.wbsCode} · ` : ''}
+                          {t.title} ({formatTaskStatusLabel(t.status)})
                         </option>
                       ))}
                     </select>
@@ -3053,7 +3374,8 @@ function TaskInspectorDrawer({
                                 onClick={() => onSelectTask(up.id)}
                                 className="font-medium text-[#0F172A] dark:text-[#F8FAFC] hover:text-[#1D4ED8] dark:hover:text-[#60A5FA] text-left"
                               >
-                                {up.wbsCode} {up.title}
+                                {useWbs ? `${up.wbsCode} ` : ''}
+                                {up.title}
                               </button>
                               <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-mono">
                                 {b.dependencyType} · {formatTaskStatusLabel(up.status)} ({up.progress}%)
@@ -3165,7 +3487,8 @@ function TaskInspectorDrawer({
                                 onClick={() => onSelectTask(down.id)}
                                 className="font-medium text-[#0F172A] dark:text-[#F8FAFC] hover:text-[#1D4ED8] dark:hover:text-[#60A5FA] text-left"
                               >
-                                {down.wbsCode} {down.title}
+                                {useWbs ? `${down.wbsCode} ` : ''}
+                                {down.title}
                               </button>
                               <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8] font-mono">
                                 {b.dependencyType} ·{' '}
@@ -3478,6 +3801,7 @@ function NewProjectModal({
   const [cycleType, setCycleType] = useState<CycleType>('yearly');
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(addDaysStr(today, 30));
+  const [useWbs, setUseWbs] = useState(true);
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -3491,7 +3815,7 @@ function NewProjectModal({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name, code, cycleType, startDate, endDate, description }),
+        body: JSON.stringify({ name, code, cycleType, startDate, endDate, useWbs, description }),
       });
       const data = (await res.json()) as { id?: string; error?: string };
       if (!res.ok || !data.id) {
@@ -3508,8 +3832,8 @@ function NewProjectModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0F172A]/45 dark:bg-black/70 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-lg max-w-lg w-full shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between">
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-lg max-w-lg w-full shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between shrink-0">
           <h3 className="font-display text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
             New Maintenance Project Schedule
           </h3>
@@ -3521,7 +3845,7 @@ function NewProjectModal({
             <X className="w-4 h-4" />
           </button>
         </div>
-        <form onSubmit={submit} className="p-6 space-y-4">
+        <form onSubmit={submit} className="p-6 space-y-4 overflow-y-auto">
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
@@ -3589,6 +3913,44 @@ function NewProjectModal({
               />
             </div>
           </div>
+
+          <div className="p-3 bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-md space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                Enable WBS Code Numbering?
+              </span>
+              <span className="text-[11px] text-[#64748B] dark:text-[#94A3B8]">
+                Changeable later
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setUseWbs(true)}
+                className={`text-left px-3 py-2 rounded-md border transition-colors ${
+                  useWbs
+                    ? 'bg-[#EFF6FF] dark:bg-[#1E3A8A]/35 border-[#1D4ED8] dark:border-[#60A5FA] text-[#0F172A] dark:text-[#F8FAFC]'
+                    : 'bg-white dark:bg-[#111827] border-[#E2E8F0] dark:border-[#334155] text-[#475569] dark:text-[#94A3B8]'
+                }`}
+              >
+                <div className="text-xs font-semibold">Yes — WBS Codes (1.0, 1.1)</div>
+                <div className="text-[11px] opacity-80">Structured work breakdown numbering</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUseWbs(false)}
+                className={`text-left px-3 py-2 rounded-md border transition-colors ${
+                  !useWbs
+                    ? 'bg-[#EFF6FF] dark:bg-[#1E3A8A]/35 border-[#1D4ED8] dark:border-[#60A5FA] text-[#0F172A] dark:text-[#F8FAFC]'
+                    : 'bg-white dark:bg-[#111827] border-[#E2E8F0] dark:border-[#334155] text-[#475569] dark:text-[#94A3B8]'
+                }`}
+              >
+                <div className="text-xs font-semibold">No — Simple Activity List</div>
+                <div className="text-[11px] opacity-80">Hide WBS column &amp; codes</div>
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
               Description
@@ -3622,6 +3984,197 @@ function NewProjectModal({
   );
 }
 
+function ProjectSettingsModal({
+  project,
+  token,
+  onClose,
+  onUpdated,
+  onNotify,
+}: {
+  project: Project;
+  token: string;
+  onClose: () => void;
+  onUpdated: () => Promise<void>;
+  onNotify: (m: string, k?: 'info' | 'error') => void;
+}) {
+  const [name, setName] = useState(project.name);
+  const [code, setCode] = useState(project.code);
+  const [cycleType, setCycleType] = useState<CycleType>(project.cycleType);
+  const [startDate, setStartDate] = useState(project.startDate);
+  const [endDate, setEndDate] = useState(project.endDate);
+  const [useWbs, setUseWbs] = useState(project.useWbs ?? true);
+  const [description, setDescription] = useState(project.description);
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name,
+          code,
+          cycleType,
+          startDate,
+          endDate,
+          useWbs,
+          description,
+        }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        onNotify(data.error ?? 'Failed to update project settings.', 'error');
+        return;
+      }
+      await onUpdated();
+    } catch {
+      onNotify('Network error updating project settings.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-[#0F172A]/45 dark:bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-lg max-w-lg w-full shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between shrink-0">
+          <h3 className="font-display text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
+            Project Settings · {project.code}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 text-[#64748B] dark:text-[#94A3B8] hover:text-[#0F172A] dark:hover:text-[#F8FAFC]"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <form onSubmit={submit} className="p-6 space-y-4 overflow-y-auto">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                Code
+              </label>
+              <input
+                type="text"
+                required
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                Cycle
+              </label>
+              <select
+                value={cycleType}
+                onChange={(e) => setCycleType(e.target.value as CycleType)}
+                className="w-full px-3 py-2 text-sm border border-[#CBD5E1] dark:border-[#334155] rounded-md bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC]"
+              >
+                <option value="yearly">Yearly Maintenance</option>
+                <option value="routine">Routine Cycle</option>
+                <option value="eventual">Eventual Inspection</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+              Project Name
+            </label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                Start Date
+              </label>
+              <input
+                type="date"
+                required
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                End Date
+              </label>
+              <input
+                type="date"
+                required
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
+              />
+            </div>
+          </div>
+
+          <label className="flex items-start justify-between gap-4 p-3.5 bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#334155] rounded-md cursor-pointer">
+            <div>
+              <div className="text-xs font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                Enable WBS Code Numbering
+              </div>
+              <div className="text-[11px] text-[#64748B] dark:text-[#94A3B8] mt-0.5">
+                Show WBS columns, prefixes, and manual WBS inputs on activities. Existing stored WBS codes remain safely preserved when hidden.
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={useWbs}
+              onChange={(e) => setUseWbs(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-[#CBD5E1] text-[#1D4ED8]"
+            />
+          </label>
+
+          <div>
+            <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+              Description
+            </label>
+            <textarea
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
+            />
+          </div>
+
+          <div className="pt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-[#475569] dark:text-[#CBD5E1] bg-white dark:bg-[#0F172A] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 text-xs font-medium text-white bg-[#1D4ED8] hover:bg-[#1E40AF] rounded-md"
+            >
+              {saving ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function NewTaskModal({
   project,
   existingTasks,
@@ -3641,6 +4194,7 @@ function NewTaskModal({
   onCreated: () => Promise<void>;
   onNotify: (m: string, k?: 'info' | 'error') => void;
 }) {
+  const useWbs = project.useWbs ?? true;
   const [wbsCode, setWbsCode] = useState(`${existingTasks.length + 1}.0`);
   const [title, setTitle] = useState('');
   const [taskType, setTaskType] = useState<TaskType>('task');
@@ -3670,7 +4224,7 @@ function NewTaskModal({
           projectId: project.id,
           parentId: parentId || null,
           dependsOnParent: Boolean(parentId) && dependsOnParent,
-          wbsCode,
+          wbsCode: useWbs ? wbsCode : '',
           title,
           taskType,
           assigneeId: pickedUser ? pickedUser.id : assigneeId || null,
@@ -3696,10 +4250,10 @@ function NewTaskModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0F172A]/45 dark:bg-black/70 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-lg max-w-lg w-full shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between">
+      <div className="bg-white dark:bg-[#111827] border border-[#E2E8F0] dark:border-[#334155] rounded-lg max-w-lg w-full shadow-lg overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-[#E2E8F0] dark:border-[#1E293B] flex items-center justify-between shrink-0">
           <h3 className="font-display text-base font-bold text-[#0F172A] dark:text-[#F8FAFC]">
-            Add Project WBS Activity
+            {useWbs ? 'Add Project WBS Activity' : 'Add Project Activity'}
           </h3>
           <button
             type="button"
@@ -3709,20 +4263,22 @@ function NewTaskModal({
             <X className="w-4 h-4" />
           </button>
         </div>
-        <form onSubmit={submit} className="p-6 space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
-                WBS Code
-              </label>
-              <input
-                type="text"
-                required
-                value={wbsCode}
-                onChange={(e) => setWbsCode(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
-              />
-            </div>
+        <form onSubmit={submit} className="p-6 space-y-4 overflow-y-auto">
+          <div className={useWbs ? 'grid grid-cols-1 sm:grid-cols-3 gap-3' : 'grid grid-cols-1 sm:grid-cols-2 gap-3'}>
+            {useWbs && (
+              <div>
+                <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
+                  WBS Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={wbsCode}
+                  onChange={(e) => setWbsCode(e.target.value)}
+                  className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#0F172A] text-[#0F172A] dark:text-[#F8FAFC] border border-[#CBD5E1] dark:border-[#334155] rounded-md"
+                />
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
                 Type
@@ -3749,7 +4305,8 @@ function NewTaskModal({
                 <option value="">Top Level</option>
                 {parentCandidates.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.wbsCode} {p.title}
+                    {useWbs ? `${p.wbsCode} ` : ''}
+                    {p.title}
                   </option>
                 ))}
               </select>
@@ -3784,7 +4341,7 @@ function NewTaskModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-[#334155] dark:text-[#CBD5E1] mb-1">
                 Assignee (Registered User)
@@ -3889,6 +4446,7 @@ function NewTaskModal({
 
 function NewBlockerModal({
   projectId,
+  useWbs,
   tasks,
   token,
   onClose,
@@ -3896,6 +4454,7 @@ function NewBlockerModal({
   onNotify,
 }: {
   projectId: string;
+  useWbs: boolean;
   tasks: ProjectTask[];
   token: string;
   onClose: () => void;
@@ -3966,7 +4525,8 @@ function NewBlockerModal({
             >
               {tasks.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.wbsCode} · {t.title} ({t.progress}%)
+                  {useWbs ? `${t.wbsCode} · ` : ''}
+                  {t.title} ({t.progress}%)
                 </option>
               ))}
             </select>
@@ -3983,7 +4543,8 @@ function NewBlockerModal({
             >
               {tasks.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.wbsCode} · {t.title}
+                  {useWbs ? `${t.wbsCode} · ` : ''}
+                  {t.title}
                 </option>
               ))}
             </select>
@@ -4040,6 +4601,7 @@ function NewBlockerModal({
 
 function ActivityHoverPopover({
   task,
+  useWbs,
   x,
   y,
   incomingBlockers,
@@ -4047,6 +4609,7 @@ function ActivityHoverPopover({
   taskById,
 }: {
   task: ProjectTask;
+  useWbs: boolean;
   x: number;
   y: number;
   incomingBlockers: TaskBlocker[];
@@ -4070,8 +4633,12 @@ function ActivityHoverPopover({
       <div className="flex items-start justify-between gap-2 border-b border-[#F1F5F9] dark:border-[#334155] pb-2">
         <div className="min-w-0">
           <div className="font-mono text-[11px] font-semibold text-[#1D4ED8] dark:text-[#60A5FA] flex items-center gap-1.5">
-            <span>WBS {task.wbsCode}</span>
-            <span className="text-[#CBD5E1] dark:text-[#475569]">·</span>
+            {useWbs && (
+              <>
+                <span>WBS {task.wbsCode}</span>
+                <span className="text-[#CBD5E1] dark:text-[#475569]">·</span>
+              </>
+            )}
             <span className="uppercase text-[#64748B] dark:text-[#94A3B8]">{task.taskType}</span>
           </div>
           <div className="font-semibold text-[#0F172A] dark:text-[#F8FAFC] text-xs mt-0.5 leading-snug">
@@ -4135,7 +4702,9 @@ function ActivityHoverPopover({
             const up = taskById.get(b.blockerTaskId);
             return (
               <div key={b.id} className="text-[11px] text-[#7F1D1D] dark:text-[#FECACA] truncate">
-                {up ? `${up.wbsCode} ${up.title} (${up.progress}%)` : b.blockerReason}
+                {up
+                  ? `${useWbs ? `${up.wbsCode} ` : ''}${up.title} (${up.progress}%)`
+                  : b.blockerReason}
               </div>
             );
           })}
@@ -4151,7 +4720,7 @@ function ActivityHoverPopover({
             .slice(0, 2)
             .map((b) => {
               const down = taskById.get(b.blockedTaskId);
-              return down ? `${down.wbsCode} ${down.title}` : '';
+              return down ? `${useWbs ? `${down.wbsCode} ` : ''}${down.title}` : '';
             })
             .filter(Boolean)
             .join(', ')}
