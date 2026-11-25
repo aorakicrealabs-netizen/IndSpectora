@@ -47,15 +47,12 @@ import { formatDateTime } from './utils/export.ts';
 type ActiveTab = Exclude<TourPageKey, 'users'>;
 type ThemeMode = 'light' | 'dark';
 
-const TOKEN_STORAGE_KEY = 'indspectora_session_token';
 const THEME_STORAGE_KEY = 'indspectora_theme';
 
 export default function App() {
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem('opsledger_session_token')
-  );
+  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [authChecking, setAuthChecking] = useState<boolean>(Boolean(token));
+  const [authChecking, setAuthChecking] = useState<boolean>(true);
   const [data, setData] = useState<BootstrapPayload | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
@@ -173,7 +170,6 @@ export default function App() {
         headers: { Authorization: `Bearer ${activeToken}` },
       });
       if (res.status === 401) {
-        localStorage.removeItem(TOKEN_STORAGE_KEY);
         setToken(null);
         setUser(null);
         return;
@@ -187,30 +183,33 @@ export default function App() {
     }
   }, []);
 
-  // Verify stored token on startup
+  // Verify HttpOnly session cookie on startup and hydrate Bearer token into React memory
   useEffect(() => {
-    if (!token) {
-      setAuthChecking(false);
-      return;
+    try {
+      localStorage.removeItem('indspectora_session_token');
+      localStorage.removeItem('opsledger_session_token');
+    } catch {
+      // Ignore storage access errors
     }
+
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         });
         if (!res.ok) {
-          localStorage.removeItem(TOKEN_STORAGE_KEY);
           if (!cancelled) {
             setToken(null);
             setUser(null);
           }
           return;
         }
-        const body = (await res.json()) as { user: User };
-        if (!cancelled) {
+        const body = (await res.json()) as { user?: User; token?: string };
+        if (!cancelled && body.user && body.token) {
+          setToken(body.token);
           setUser(body.user);
-          await fetchBootstrap(token);
+          await fetchBootstrap(body.token);
         }
       } catch {
         if (!cancelled) notify('Unable to verify session with local server.', 'error');
@@ -221,7 +220,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [token, fetchBootstrap, notify]);
+  }, [fetchBootstrap, notify]);
 
   // Real-time WebSocket connection with automatic reconnect
   useEffect(() => {
@@ -278,7 +277,6 @@ export default function App() {
   }, [token, user, fetchBootstrap, notify]);
 
   function handleAuthenticated(nextToken: string, nextUser: User) {
-    localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
     appliedLandingForUserRef.current = null;
     setToken(nextToken);
     setUser(nextUser);
@@ -293,9 +291,15 @@ export default function App() {
       await fetch('/api/auth/logout', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       }).catch(() => {});
     }
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    try {
+      localStorage.removeItem('indspectora_session_token');
+      localStorage.removeItem('opsledger_session_token');
+    } catch {
+      // Ignore storage access errors
+    }
     appliedLandingForUserRef.current = null;
     setToken(null);
     setUser(null);

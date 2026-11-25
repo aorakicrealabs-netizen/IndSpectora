@@ -2,12 +2,15 @@
  * IndSpectora — Non-Destructive Developer Mock Data Engine
  * @author Aoraki CreaLabs
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
   UPLOADS_DIR,
   db,
+  getWorkspaceSettingBoolean,
   hashPassword,
+  normalizeRoles,
   setWorkspaceSetting,
 } from './db.ts';
 
@@ -106,9 +109,71 @@ function removeMockSchematics(): void {
   }
 }
 
+export const DEV_SANDBOX_USER_IDS = ['usr_mock_app_01', 'usr_mock_ops_01'] as const;
+
+function randomSandboxSecretHash(): string {
+  return hashPassword(crypto.randomBytes(24).toString('hex'));
+}
+
+export function ensureDevDemoUsers(): void {
+  const now = new Date().toISOString();
+  const insertUser = db.prepare(
+    `INSERT OR IGNORE INTO users (id, name, email, password_hash, role, roles_json, title, is_mock, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`
+  );
+  insertUser.run(
+    'usr_mock_app_01',
+    'Elena Rostova (Sample)',
+    'elena.sample@indspectora.local',
+    randomSandboxSecretHash(),
+    'approver',
+    JSON.stringify(['approver']),
+    'EHS & Reliability Approver',
+    now
+  );
+  insertUser.run(
+    'usr_mock_ops_01',
+    'Marcus Chen (Sample)',
+    'marcus.sample@indspectora.local',
+    randomSandboxSecretHash(),
+    'user',
+    JSON.stringify(['user']),
+    'Lead Plant Technician',
+    now
+  );
+}
+
+export function cleanupDevDemoUsersIfMockOff(): void {
+  const mockDataEnabled = getWorkspaceSettingBoolean('mock_data_enabled', false);
+  const runCleanup = db.transaction(() => {
+    // Always terminate active sandbox sessions when login quick-demo is disabled
+    db.prepare(
+      `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_mock, 0) = 1)`
+    ).run();
+
+    if (!mockDataEnabled) {
+      db.prepare(
+        `DELETE FROM users WHERE id IN ('usr_mock_app_01', 'usr_mock_ops_01') AND COALESCE(is_mock, 0) = 1`
+      ).run();
+    }
+  });
+  runCleanup();
+}
+
 export function purgeMockData(excludeUserId?: string): void {
   const runPurge = db.transaction(() => {
     removeMockSchematics();
+
+    // Terminate active sessions of mock users before deleting them
+    if (excludeUserId) {
+      db.prepare(
+        `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_mock, 0) = 1 AND id != ?)`
+      ).run(excludeUserId);
+    } else {
+      db.prepare(
+        `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_mock, 0) = 1)`
+      ).run();
+    }
 
     const tablesInOrder = [
       'user_notifications',
@@ -139,11 +204,11 @@ export function purgeMockData(excludeUserId?: string): void {
 
     if (excludeUserId) {
       db.prepare(
-        `DELETE FROM users WHERE COALESCE(is_mock, 0) = 1 AND id NOT IN ('usr_admin_01', 'usr_insp_01') AND id != ?`
+        `DELETE FROM users WHERE COALESCE(is_mock, 0) = 1 AND id != ?`
       ).run(excludeUserId);
     } else {
       db.prepare(
-        `DELETE FROM users WHERE COALESCE(is_mock, 0) = 1 AND id NOT IN ('usr_admin_01', 'usr_insp_01')`
+        `DELETE FROM users WHERE COALESCE(is_mock, 0) = 1`
       ).run();
     }
   });
@@ -163,33 +228,34 @@ export function seedMockData(actorUserId?: string): void {
     purgeMockData(actorUserId);
     writeMockSchematics();
 
-    // 1. Mock sample team accounts (never overwrites manual accounts)
+    // 1. Mock sample non-admin team accounts (random server-only secrets; never overwrites manual accounts)
     const mockApproverId = 'usr_mock_app_01';
     const mockInspectorId = 'usr_mock_ops_01';
-    const insertUser = db.prepare(
-      `INSERT OR IGNORE INTO users (id, name, email, password_hash, role, roles_json, title, is_mock, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`
-    );
-    insertUser.run(
-      mockApproverId,
-      'Elena Rostova (Sample)',
-      'elena.sample@indspectora.local',
-      hashPassword('sample123'),
-      'approver',
-      JSON.stringify(['approver']),
-      'EHS & Reliability Approver',
-      now
-    );
-    insertUser.run(
-      mockInspectorId,
-      'Marcus Chen (Sample)',
-      'marcus.sample@indspectora.local',
-      hashPassword('sample123'),
-      'user',
-      JSON.stringify(['user']),
-      'Lead Plant Technician',
-      now
-    );
+    ensureDevDemoUsers();
+
+    // Resolve dynamic non-mock Admin / standard operator references so foreign keys never fail on fresh setups
+    const realUsers = db
+      .prepare(`SELECT id, name, title, role, roles_json FROM users WHERE COALESCE(is_mock, 0) = 0 ORDER BY created_at ASC`)
+      .all() as { id: string; name: string; title: string; role: string; roles_json: string }[];
+
+    const actorRow =
+      (actorUserId ? realUsers.find((u) => u.id === actorUserId) : undefined) ??
+      realUsers.find((u) => normalizeRoles(u.roles_json, u.role).includes('admin')) ??
+      realUsers[0];
+
+    const leadAdminId = actorRow?.id ?? mockApproverId;
+    const leadAdminName = actorRow?.name ?? 'Elena Rostova (Sample)';
+    const leadAdminTitle = actorRow?.title || 'Operations Administrator';
+
+    const standardUserRow =
+      realUsers.find((u) => {
+        const roles = normalizeRoles(u.roles_json, u.role);
+        return !roles.includes('admin') && !roles.includes('approver');
+      }) ?? null;
+
+    const fieldOperatorId = standardUserRow?.id ?? mockInspectorId;
+    const fieldOperatorName = standardUserRow?.name ?? 'Marcus Chen (Sample)';
+    const fieldOperatorTitle = standardUserRow?.title || 'Lead Plant Technician';
 
     // 2. Facility Zones
     const insertZone = db.prepare(
@@ -263,8 +329,8 @@ export function seedMockData(actorUserId?: string): void {
       '1',
       'Phase 1 · Mechanical Isolation & Preparation',
       'phase',
-      'usr_admin_01',
-      'Alex Mercer',
+      leadAdminId,
+      leadAdminName,
       isoDateOffset(-10),
       isoDateOffset(5),
       72,
@@ -317,8 +383,8 @@ export function seedMockData(actorUserId?: string): void {
       '2',
       'Phase 2 · Baghouse & Exhaust Recommissioning',
       'phase',
-      'usr_admin_01',
-      'Alex Mercer',
+      leadAdminId,
+      leadAdminName,
       isoDateOffset(6),
       isoDateOffset(22),
       10,
@@ -335,8 +401,8 @@ export function seedMockData(actorUserId?: string): void {
       '2.1',
       'Turnaround Sign-Off Milestone',
       'milestone',
-      'usr_admin_01',
-      'Alex Mercer',
+      leadAdminId,
+      leadAdminName,
       isoDateOffset(22),
       isoDateOffset(22),
       0,
@@ -354,8 +420,8 @@ export function seedMockData(actorUserId?: string): void {
       '1',
       'Line B Light Curtain & E-Stop Verification',
       'task',
-      'usr_insp_01',
-      'Jordan Vance',
+      fieldOperatorId,
+      fieldOperatorName,
       isoDateOffset(-3),
       isoDateOffset(8),
       60,
@@ -533,9 +599,9 @@ export function seedMockData(actorUserId?: string): void {
       'Thermal Processing Hall Yearly Audit',
       'yearly',
       'FAC-M01 — Thermal Processing Hall',
-      'usr_insp_01',
-      'Jordan Vance',
-      'Senior Field Operator',
+      fieldOperatorId,
+      fieldOperatorName,
+      fieldOperatorTitle,
       'approved',
       'good',
       'All thermal dryer bearings and CO2 suppression skid readings verified within engineering tolerance.',
@@ -569,9 +635,9 @@ export function seedMockData(actorUserId?: string): void {
       'Packaging Line B Safety Sweep',
       'routine',
       'FAC-M03 — Packaging & Conveyor Line B',
-      'usr_insp_01',
-      'Jordan Vance',
-      'Senior Field Operator',
+      fieldOperatorId,
+      fieldOperatorName,
+      fieldOperatorTitle,
       'sent_back',
       'fair',
       'Need updated photo of E-stop reset switch before final sign-off.',
@@ -660,10 +726,10 @@ export function seedMockData(actorUserId?: string): void {
       `INSERT INTO inspection_parameter_values (id, entry_id, parameter_id, label, param_type, unit, value_text, updated_by, is_mock, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
     );
-    insertParamVal.run('ipv_mock_01', 'ent_mock_01', 'prm_mock_01', 'Gearbox Vibration RMS', 'number', 'mm/s', '2.4', 'Jordan Vance', yesterday);
-    insertParamVal.run('ipv_mock_02', 'ent_mock_01', 'prm_mock_02', 'Shell Max Surface Temp', 'number', '°C', '64', 'Jordan Vance', yesterday);
-    insertParamVal.run('ipv_mock_03', 'ent_mock_01', 'prm_mock_03', 'Oil Sight Glass Clear', 'boolean', '', 'Yes', 'Jordan Vance', yesterday);
-    insertParamVal.run('ipv_mock_04', 'ent_mock_02', 'prm_mock_07', 'Manifold Pressure', 'number', 'bar', '58.5', 'Jordan Vance', yesterday);
+    insertParamVal.run('ipv_mock_01', 'ent_mock_01', 'prm_mock_01', 'Gearbox Vibration RMS', 'number', 'mm/s', '2.4', fieldOperatorName, yesterday);
+    insertParamVal.run('ipv_mock_02', 'ent_mock_01', 'prm_mock_02', 'Shell Max Surface Temp', 'number', '°C', '64', fieldOperatorName, yesterday);
+    insertParamVal.run('ipv_mock_03', 'ent_mock_01', 'prm_mock_03', 'Oil Sight Glass Clear', 'boolean', '', 'Yes', fieldOperatorName, yesterday);
+    insertParamVal.run('ipv_mock_04', 'ent_mock_02', 'prm_mock_07', 'Manifold Pressure', 'number', 'bar', '58.5', fieldOperatorName, yesterday);
     insertParamVal.run('ipv_mock_05', 'ent_mock_03', 'prm_mock_04', 'Busbar Peak IR Temp', 'number', '°C', '44.2', 'Marcus Chen (Sample)', now);
     insertParamVal.run('ipv_mock_06', 'ent_mock_03', 'prm_mock_05', 'Arc-Flash Relay Clear', 'boolean', '', 'Yes', 'Marcus Chen (Sample)', now);
 
@@ -671,16 +737,16 @@ export function seedMockData(actorUserId?: string): void {
       `INSERT INTO inspection_pin_results (id, entry_id, pin_id, condition, notes, updated_by, is_mock, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 1, ?)`
     );
-    insertPinResult.run('ipr_mock_01', 'ent_mock_01', 'pin_mock_01', 'good', 'Gearbox running smooth at 2.4 mm/s.', 'Jordan Vance', yesterday);
-    insertPinResult.run('ipr_mock_02', 'ent_mock_01', 'pin_mock_02', 'good', 'Trunnion track clean, no pitting.', 'Jordan Vance', yesterday);
+    insertPinResult.run('ipr_mock_01', 'ent_mock_01', 'pin_mock_01', 'good', 'Gearbox running smooth at 2.4 mm/s.', fieldOperatorName, yesterday);
+    insertPinResult.run('ipr_mock_02', 'ent_mock_01', 'pin_mock_02', 'good', 'Trunnion track clean, no pitting.', fieldOperatorName, yesterday);
     insertPinResult.run('ipr_mock_03', 'ent_mock_03', 'pin_mock_04', 'needs_attention', 'Phase B lug slightly warm at 44.2 °C.', 'Marcus Chen (Sample)', now);
 
     const insertStep = db.prepare(
       `INSERT INTO report_approval_steps (id, report_id, step_order, approver_id, approver_name, approver_title, status, decision_note, acted_at, is_mock)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
     );
-    insertStep.run('stp_mock_01', 'rep_mock_01', 1, 'usr_admin_01', 'Alex Mercer', 'Maintenance Operations Lead', 'approved', 'Verified against turnaround criteria.', yesterday);
-    insertStep.run('stp_mock_02', 'rep_mock_02', 1, 'usr_admin_01', 'Alex Mercer', 'Maintenance Operations Lead', 'pending', '', null);
+    insertStep.run('stp_mock_01', 'rep_mock_01', 1, leadAdminId, leadAdminName, leadAdminTitle, 'approved', 'Verified against turnaround criteria.', yesterday);
+    insertStep.run('stp_mock_02', 'rep_mock_02', 1, leadAdminId, leadAdminName, leadAdminTitle, 'pending', '', null);
     insertStep.run('stp_mock_03', 'rep_mock_03', 1, mockApproverId, 'Elena Rostova (Sample)', 'EHS & Reliability Approver', 'sent_back', 'Please attach photo of reset switch guard.', yesterday);
 
     const insertComment = db.prepare(
@@ -705,8 +771,8 @@ export function seedMockData(actorUserId?: string): void {
     insertFootprint.run(
       'rfp_mock_01',
       'rep_mock_01',
-      'usr_admin_01',
-      'Alex Mercer',
+      leadAdminId,
+      leadAdminName,
       JSON.stringify(['admin', 'approver']),
       'approved',
       'Approved report INSP-M001 at step 1.',
@@ -719,7 +785,7 @@ export function seedMockData(actorUserId?: string): void {
        VALUES (?, ?, ?, ?, ?, 1, ?)`
     ).run(
       'log_mock_01',
-      'Alex Mercer',
+      leadAdminName,
       'admin',
       'mock:enabled',
       'Sample mock operations dataset loaded (zones, assets, schematics, projects, and reports).',

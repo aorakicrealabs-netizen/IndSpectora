@@ -657,37 +657,19 @@ export function initSchema(): void {
   }
 }
 
+export function hasAnyNonMockAdminUser(): boolean {
+  const rows = db
+    .prepare(`SELECT role, roles_json FROM users WHERE COALESCE(is_mock, 0) = 0`)
+    .all() as { role: string; roles_json: string }[];
+  return rows.some((r) => {
+    const roles = normalizeRoles(r.roles_json, r.role);
+    return roles.includes('admin');
+  });
+}
+
 export function seedDatabaseIfEmpty(): void {
-  const userCount = (db.prepare('SELECT COUNT(*) as cnt FROM users').get() as { cnt: number }).cnt;
-  if (userCount > 0) return;
-
-  const now = new Date().toISOString();
-  const adminId = 'usr_admin_01';
-  const inspectorId = 'usr_insp_01';
-
-  const insertUser = db.prepare(
-    `INSERT INTO users (id, name, email, password_hash, role, roles_json, title, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-  insertUser.run(
-    adminId,
-    'Alex Mercer',
-    'admin@indspectora.local',
-    hashPassword('admin123'),
-    'admin',
-    JSON.stringify(['admin', 'approver']),
-    'Maintenance Operations Lead',
-    now
-  );
-  insertUser.run(
-    inspectorId,
-    'Jordan Vance',
-    'inspector@indspectora.local',
-    hashPassword('inspect123'),
-    'user',
-    JSON.stringify(['user']),
-    'Senior Field Operator',
-    now
-  );
+  // Fresh databases start with zero hardcoded user credentials;
+  // the first deployer claims the initial Admin account via /api/auth/setup-admin.
 }
 
 export function logActivity(
@@ -978,9 +960,15 @@ export function getDeveloperSettingsState(): DeveloperSettingsState {
     mockUsers: users.mock,
   };
 
+  const developerMode = getWorkspaceSettingBoolean('developer_mode', false);
+  const mockDataEnabled = getWorkspaceSettingBoolean('mock_data_enabled', false);
+  const loginTemplatesEnabled =
+    developerMode && getWorkspaceSettingBoolean('login_templates_enabled', false);
+
   return {
-    developerMode: getWorkspaceSettingBoolean('developer_mode', false),
-    mockDataEnabled: getWorkspaceSettingBoolean('mock_data_enabled', false),
+    developerMode,
+    mockDataEnabled,
+    loginTemplatesEnabled,
     counts,
   };
 }

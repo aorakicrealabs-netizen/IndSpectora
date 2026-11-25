@@ -11,9 +11,7 @@ This runbook provides deterministic, step-by-step instructions for an **AI Agent
 - **Database & File Storage**:
   - SQLite database auto-initialized at `./data/indspectora.db`
   - Uploaded inspection photos and asset engineering drawings stored under `./data/uploads/`
-- **First-Run Seed Behavior**: When `users` is empty at boot, IndSpectora seeds **two starter user accounts only** (zero mock assets, reports, or projects):
-  - **Admin + Approver**: `admin@indspectora.local` / `admin123`
-  - **Standard User**: `inspector@indspectora.local` / `inspect123`
+- **First-Run Initialization**: When `users` has zero non-mock Admin accounts at boot, IndSpectora serves an unseeded database (`0` users, `0` mock assets/reports/projects) and presents a one-time **First-Run Administrator Setup** form in the browser (`/api/auth/setup-admin`), which locks automatically after creation.
 
 ---
 
@@ -137,7 +135,7 @@ IndSpectora server listening on http://0.0.0.0:3000
 
 ## Phase 4: AI-Agent First-Setup Verification (Autonomous Health Check)
 
-Once the server is running on port `3000`, verify HTTP serving, SQLite seeding, authentication, and bootstrap endpoints without leaving test data behind:
+Once the server is running on port `3000`, verify HTTP serving and authentication status without mutating or claiming the first-run Admin slot:
 
 ```bash
 node -e '
@@ -146,30 +144,16 @@ node -e '
   const page = await fetch(base);
   if (!page.ok) throw new Error("UI failed to respond: " + page.status);
 
-  const login = await fetch(base + "/api/auth/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: "admin@indspectora.local", password: "admin123" }),
-  });
-  const auth = await login.json();
-  if (login.status !== 200 || !auth.token) {
-    throw new Error("Starter Admin login failed: " + JSON.stringify(auth));
-  }
-
-  const boot = await fetch(base + "/api/bootstrap", {
-    headers: { Authorization: "Bearer " + auth.token },
-  });
-  const data = await boot.json();
-  if (boot.status !== 200 || !Array.isArray(data.users)) {
-    throw new Error("Bootstrap failed: " + boot.status);
+  const statusRes = await fetch(base + "/api/auth/status");
+  const status = await statusRes.json();
+  if (statusRes.status !== 200 || typeof status.needsFirstAdminSetup !== "boolean") {
+    throw new Error("Auth status check failed: " + JSON.stringify(status));
   }
 
   console.log("LOCALHOST DEPLOY HEALTHY:", {
     url: base,
-    seededUsers: data.users.map((u) => ({ email: u.email, roles: u.roles })),
-    libraryItems: data.libraryItems.length,
-    reports: data.reports.length,
-    projects: data.projects.length,
+    needsFirstAdminSetup: status.needsFirstAdminSetup,
+    loginTemplatesEnabled: status.loginTemplatesEnabled,
   });
 })().catch((err) => {
   console.error(err);
@@ -181,7 +165,7 @@ node -e '
 Verification criteria:
 1. `http://localhost:3000` responds with HTTP `200`.
 2. `./data/indspectora.db` and `./data/uploads/` exist on disk.
-3. Initial login works with `admin@indspectora.local` and returns zero mock operational rows (`libraryItems: 0`, `reports: 0`, `projects: 0`).
+3. `GET /api/auth/status` returns `needsFirstAdminSetup: true` on a clean database with `loginTemplatesEnabled: false` and `demoAccounts: []`.
 
 ---
 
@@ -208,14 +192,12 @@ An AI Agent must **pause and provide clear instructions** to the user whenever a
 - **User Instruction**:
   - Either stop the conflicting process holding port `3000`, **OR** instruct the agent to run IndSpectora on an alternate port (for example `PORT=3001` in `.env` and `3001:3000` in `docker-compose.yml`).
 
-### Gate 4 — Mandatory First-Login Security Rotation (Human Setup Inside App)
-- **Trigger**: Immediately after the agent reports `LOCALHOST DEPLOY HEALTHY` on a fresh database.
+### Gate 4 — Mandatory First-Run Administrator Creation (Human Setup Inside App)
+- **Trigger**: Immediately after the agent reports `LOCALHOST DEPLOY HEALTHY` with `needsFirstAdminSetup: true`.
 - **User Instruction**:
   1. Open `http://localhost:3000` in your browser.
-  2. Sign in with the starter Admin account: `admin@indspectora.local` / `admin123`.
-  3. Open **User Management** in the sidebar.
-  4. Click **Reset Password** on both `admin@indspectora.local` and `inspector@indspectora.local` to replace the starter passwords.
-  5. Create real accounts for your team and assign multi-role checkboxes (`Admin`, `Approver`, `User`). Make sure designated reviewers hold the **Approver** role so they appear in Inspection approval chains.
+  2. Complete the **Create Initial Administrator Account** form (`Admin + Approver`, minimum 8-character password).
+  3. Open **Settings → Account Management** to create real accounts for your team and assign multi-role checkboxes (`Admin`, `Approver`, `User`). Make sure designated reviewers hold the **Approver** role so they appear in Inspection approval chains.
 
 ### Gate 5 — Initial Plant Data Onboarding (Human Setup Inside App)
 - **Trigger**: First operational onboarding before teams execute live inspections.
@@ -225,5 +207,5 @@ An AI Agent must **pause and provide clear instructions** to the user whenever a
   3. Open individual high-priority Assets to upload **engineering drawings**, place numbered **visual inspection pins**, and verify custom parameter units (`kg`, `bar`, `°C`, `Yes/No`).
 
 ### Gate 6 — Resetting Local Data or Exposing Beyond Localhost
-- **Resetting a corrupted or test database**: Stop the server (`Ctrl+C` or `docker compose down`), delete `./data/indspectora.db` and `./data/uploads/*`, then restart to re-initialize a clean database with only the two starter accounts.
-- **Exposing on a LAN or Public Server**: Never expose plain HTTP port `3000` directly to untrusted networks; place IndSpectora behind a reverse proxy (Nginx / Caddy / Cloudflare Tunnel) with HTTPS/TLS enabled so session tokens and inspection photos stay encrypted in transit.
+- **Resetting a corrupted or test database**: Stop the server (`Ctrl+C` or `docker compose down`), delete `./data/indspectora.db` and `./data/uploads/*`, then restart to re-initialize a clean unseeded database awaiting first-run Administrator setup.
+- **Exposing on a LAN or Public Server**: Never expose plain HTTP port `3000` directly to untrusted networks; place IndSpectora behind a reverse proxy (Nginx / Caddy / Cloudflare Tunnel) with HTTPS/TLS enabled so session cookies, tokens, and inspection photos stay encrypted in transit.

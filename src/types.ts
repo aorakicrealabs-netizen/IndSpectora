@@ -378,7 +378,22 @@ export interface DeveloperDatasetCounts {
 export interface DeveloperSettingsState {
   developerMode: boolean;
   mockDataEnabled: boolean;
+  loginTemplatesEnabled: boolean;
   counts: DeveloperDatasetCounts;
+}
+
+export interface DemoAccountSummary {
+  id: string;
+  name: string;
+  email: string;
+  title: string;
+  roles: UserRole[];
+}
+
+export interface AuthStatusPayload {
+  needsFirstAdminSetup: boolean;
+  loginTemplatesEnabled: boolean;
+  demoAccounts: DemoAccountSummary[];
 }
 
 export interface SessionInfo {

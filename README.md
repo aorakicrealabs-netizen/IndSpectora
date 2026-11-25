@@ -211,18 +211,13 @@ docker compose up --build -d
 
 ## First-Time Login & Usage Guide
 
-When IndSpectora boots against an empty database, two starter accounts are created automatically:
+IndSpectora ships with **zero hardcoded accounts or default passwords**:
 
-| Starter Role | Email | Default Password | Capabilities |
-| :--- | :--- | :--- | :--- |
-| **Admin + Approver** | `admin@indspectora.local` | `admin123` | Full User CRUD, Settings, Workspace Defaults, Dev Mode, Asset/Zone setup, Approvals, Projects, Override edits |
-| **Standard User** | `inspector@indspectora.local` | `inspect123` | Start/submit inspections, edit own Draft/Sent-Back reports, Asset History compare, assigned tasks |
-
-### Recommended First 10 Minutes
-1. **Sign In & Rotate Starter Passwords**: Open `http://localhost:3000`, sign in as `admin@indspectora.local`, go to **Settings → Account & Role Management**, immediately click **Reset Password** on both starter accounts, and create named team accounts with appropriate multi-role assignments.
-2. **Optional Sandbox Preview**: Want to explore pre-built schematics, projects, and multi-session inspection history immediately? Open **Settings → Developer Mode**, turn **Developer Mode ON**, and enable the **Mock Operations Dataset Pack** (you can turn it off anytime without affecting manual records).
-3. **Set Up Zones & Import Assets**: Open **Asset Library → Facility / Zone Areas** to add your physical zones, then click **Download CSV Template** and upload your equipment inventory via **Import CSV**.
-4. **Follow Built-In Tours**: Every workspace launches a brief interactive walkthrough on your first visit. Visit **How to Use** or **Settings → Preferences** anytime to replay tours, check the Role Capability Matrix, or search the in-app FAQ.
+1. **First-Run Administrator Setup**: When booting against an empty database, open `http://localhost:3000` and complete the one-time **Create Initial Administrator Account** form (`Admin + Approver`, minimum 8-character password). The setup endpoint locks automatically once the first Administrator exists.
+2. **Invite Team Accounts**: Open **Settings → Account Management** to create named team accounts with composable multi-role assignments (`Admin`, `Approver`, `User`).
+3. **Optional Sandbox & Demo Access**: Want to test workflows without affecting manual records? Open **Settings → Developer Mode**, turn **Developer Mode ON**, enable the **Mock Operations Dataset Pack**, and optionally toggle **Login Page Non-Admin Quick-Login** to expose passwordless non-admin sandbox cards (`Approver` / `User` only) on the sign-in screen.
+4. **Set Up Zones & Import Assets**: Open **Asset Library → Facility / Zone Areas** to add your physical zones, then click **Download CSV Template** and upload your equipment inventory via **Import CSV**.
+5. **Follow Built-In Tours**: Every workspace launches a brief interactive walkthrough on your first visit. Visit **How to Use** or **Settings → Appearance & Preferences** anytime to replay tours, check the Role Capability Matrix, or search the in-app FAQ.
 
 ---
 

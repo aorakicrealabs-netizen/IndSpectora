@@ -164,6 +164,7 @@ export function SettingsPage({
 
   // --- Developer Mode & Mock Data State ---
   const [togglingDevMode, setTogglingDevMode] = useState(false);
+  const [togglingLoginTemplates, setTogglingLoginTemplates] = useState(false);
   const [togglingMockData, setTogglingMockData] = useState(false);
   const [resettingMockData, setResettingMockData] = useState(false);
   const [confirmAction, setConfirmAction] = useState<'disable_mock' | 'reset_mock' | null>(null);
@@ -400,6 +401,35 @@ export function SettingsPage({
       onNotify('Network error toggling Developer Mode.', 'error');
     } finally {
       setTogglingDevMode(false);
+    }
+  }
+
+  async function handleToggleLoginTemplates(enabled: boolean) {
+    setTogglingLoginTemplates(true);
+    try {
+      const res = await fetch('/api/admin/developer-mode/login-templates', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ enabled }),
+      });
+      const parsed = await parseApiResponse<{ error?: string }>(res);
+      if (!parsed.ok) {
+        onNotify(parsed.errorMessage ?? 'Failed to update login quick-demo setting.', 'error');
+        return;
+      }
+      await onSyncComplete();
+      onNotify(
+        enabled
+          ? 'Login-page non-admin quick-demo accounts are now visible while Developer Mode is ON.'
+          : 'Login-page quick-demo accounts hidden and sandbox sessions terminated.'
+      );
+    } catch {
+      onNotify('Network error updating login quick-demo setting.', 'error');
+    } finally {
+      setTogglingLoginTemplates(false);
     }
   }
 
@@ -1339,9 +1369,47 @@ export function SettingsPage({
                     </div>
                   </div>
 
+                  <div className="p-4 rounded-md bg-[#F8FAFC] dark:bg-[#0F172A] border border-[#E2E8F0] dark:border-[#1E293B] flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-1 max-w-xl">
+                      <div className="text-sm font-semibold text-[#0F172A] dark:text-[#F8FAFC]">
+                        Login Page Non-Admin Quick-Login
+                      </div>
+                      <p className="text-xs text-[#64748B] dark:text-[#94A3B8] leading-relaxed">
+                        Shows one-click sandbox login cards on the sign-in screen for{' '}
+                        <strong className="text-[#0F172A] dark:text-[#F8FAFC]">
+                          non-admin demo accounts only (Approver and User)
+                        </strong>
+                        . Admin accounts are always excluded and no passwords are sent to the browser. Turning Developer Mode OFF hides them automatically.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={developerState.loginTemplatesEnabled}
+                      disabled={!developerState.developerMode || togglingLoginTemplates}
+                      onClick={() =>
+                        handleToggleLoginTemplates(!developerState.loginTemplatesEnabled)
+                      }
+                      className={`inline-flex items-center gap-2 px-3.5 py-2 min-h-[40px] text-xs font-semibold rounded-md border transition-colors whitespace-nowrap shrink-0 disabled:opacity-45 disabled:cursor-not-allowed ${
+                        developerState.loginTemplatesEnabled
+                          ? 'bg-[#1D4ED8] text-white border-[#1D4ED8]'
+                          : 'bg-white dark:bg-[#111827] text-[#334155] dark:text-[#CBD5E1] border-[#CBD5E1] dark:border-[#334155]'
+                      }`}
+                    >
+                      <span>
+                        {togglingLoginTemplates
+                          ? 'Updating...'
+                          : developerState.loginTemplatesEnabled
+                          ? 'Quick-Login Cards: ON'
+                          : 'Quick-Login Cards: OFF'}
+                      </span>
+                    </button>
+                  </div>
+
                   {!developerState.developerMode && !developerState.mockDataEnabled && (
                     <div className="px-4 py-3 text-xs text-[#64748B] dark:text-[#94A3B8] border border-dashed border-[#CBD5E1] dark:border-[#334155] rounded-md">
-                      Enable <strong className="text-[#0F172A] dark:text-[#F8FAFC]">Developer Mode</strong> above to load or manage the sandbox Mock Data pack.
+                      Enable <strong className="text-[#0F172A] dark:text-[#F8FAFC]">Developer Mode</strong> above to manage login-page demo access or load the sandbox Mock Data pack.
                     </div>
                   )}
 

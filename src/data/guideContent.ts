@@ -441,16 +441,17 @@ export const APP_FAQ_ITEMS: FaqItem[] = [
   {
     id: 'faq-default-accounts',
     category: 'access',
-    question: 'What are the default first-time login accounts, and should we change them?',
+    question: 'How does first-time Administrator setup work on an empty database?',
     answer:
-      'When IndSpectora starts against an empty SQLite database, it seeds two starter accounts only: an Admin+Approver account (admin@indspectora.local / admin123) and a Standard User account (inspector@indspectora.local / inspect123). No sample operational records are seeded unless an Admin turns on Developer Mock Data.',
+      'Fresh IndSpectora databases contain zero default accounts or hardcoded passwords. When you open the login screen against an uninitialized database, a one-time First-Run Administrator Setup form creates the initial Admin + Approver account and automatically locks setup afterward.',
     steps: [
-      'Log in as admin@indspectora.local right after first deployment.',
-      'Open Settings → Account Management, reset both starter passwords immediately, and create named accounts for your plant operators, supervisors, and reviewers.',
+      'Open IndSpectora right after deployment and fill out the Create Initial Administrator Account form (minimum 8-character password).',
+      'Open Settings → Account Management to create named accounts for your plant operators, supervisors, and approvers.',
+      'Optional testing: Admins can enable Settings → Developer Mode and turn on Login Page Non-Admin Quick-Login to expose passwordless non-admin sandbox accounts (Approver and User only) on the sign-in screen.',
     ],
     appliesTo: 'Admin',
-    relatedPageKey: 'users',
-    keywords: ['login', 'default', 'password', 'seed', 'first setup', 'admin123', 'inspect123'],
+    relatedPageKey: 'settings',
+    keywords: ['login', 'first setup', 'admin setup', 'bootstrap', 'developer mode', 'quick login'],
   },
   {
     id: 'faq-why-no-cycle-on-assets',

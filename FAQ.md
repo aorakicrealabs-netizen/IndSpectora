@@ -18,12 +18,11 @@ Only accounts that explicitly hold the **Approver** role appear in the sequentia
 2. Click **Edit** on the teammate row and check the **Approver** role box alongside any existing roles.
 3. Save changes—the user immediately becomes selectable across Steps 1 to 6.
 
-### What are the default first-time login accounts, and should we change them?
-When IndSpectora boots against an empty SQLite database, it seeds two starter accounts only (no mock operational data):
-- `admin@indspectora.local` / `admin123` (`Admin + Approver`)
-- `inspector@indspectora.local` / `inspect123` (`User`)
-
-Reset both starter passwords in **User Management** immediately after first deployment and create named accounts for your team.
+### How does first-time Administrator setup work on an empty database?
+When IndSpectora boots against an empty SQLite database, **zero default accounts or preset passwords** are seeded.
+1. Open `http://localhost:3000` to launch the one-time **Create Initial Administrator Account** form (`Admin + Approver`, minimum 8-character password). Once submitted, initial setup locks permanently.
+2. Open **Settings → Account Management** to create named accounts for your team.
+3. Optional testing: Admins can toggle **Developer Mode** ON in **Settings → Developer Mode** and enable **Login Page Non-Admin Quick-Login** to surface sandbox `Approver` and `User` test accounts (never Admin accounts) on the login screen.
 
 ---
 

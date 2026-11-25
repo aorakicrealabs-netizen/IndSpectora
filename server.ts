@@ -21,6 +21,8 @@ import {
   getPrimaryRole,
   getUserPreferences,
   getWorkspaceDefaults,
+  getWorkspaceSettingBoolean,
+  hasAnyNonMockAdminUser,
   hashPassword,
   initSchema,
   logActivity,
@@ -34,13 +36,19 @@ import {
   setWorkspaceSetting,
   verifyPassword,
 } from './server/db.ts';
-import { purgeMockData, seedMockData } from './server/mockData.ts';
+import {
+  cleanupDevDemoUsersIfMockOff,
+  ensureDevDemoUsers,
+  purgeMockData,
+  seedMockData,
+} from './server/mockData.ts';
 import type {
   ActivityLog,
   ConditionStatus,
   CriticalityLevel,
   CustomParameterType,
   CycleType,
+  DemoAccountSummary,
   DependencyType,
   RealtimeEventType,
   RealtimeMessage,
@@ -192,16 +200,72 @@ function getSessionUser(token: string | undefined): User | null {
   return row ? mapUserRow(row) : null;
 }
 
-function extractToken(req: Request): string | undefined {
+const SESSION_COOKIE_NAME = 'indspectora_sid';
+
+function parseSessionCookie(req: Request): string | undefined {
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return undefined;
+  const parts = cookieHeader.split(';');
+  for (const part of parts) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    if (key === SESSION_COOKIE_NAME) {
+      const val = part.slice(idx + 1).trim();
+      return val ? decodeURIComponent(val) : undefined;
+    }
+  }
+  return undefined;
+}
+
+function isHttpsRequest(req: Request): boolean {
+  const forwarded = String(req.headers['x-forwarded-proto'] ?? '').toLowerCase();
+  return req.secure || forwarded.includes('https');
+}
+
+function setSessionCookie(req: Request, res: Response, token: string): void {
+  const attrs = [
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'HttpOnly',
+    'Path=/',
+    'Max-Age=604800',
+  ];
+  if (isHttpsRequest(req)) {
+    attrs.push('Secure', 'SameSite=None', 'Partitioned');
+  } else {
+    attrs.push('SameSite=Lax');
+  }
+  res.setHeader('Set-Cookie', attrs.join('; '));
+}
+
+function clearSessionCookie(req: Request, res: Response): void {
+  const attrs = [
+    `${SESSION_COOKIE_NAME}=`,
+    'HttpOnly',
+    'Path=/',
+    'Max-Age=0',
+  ];
+  if (isHttpsRequest(req)) {
+    attrs.push('Secure', 'SameSite=None', 'Partitioned');
+  } else {
+    attrs.push('SameSite=Lax');
+  }
+  res.setHeader('Set-Cookie', attrs.join('; '));
+}
+
+function extractToken(req: Request, allowCookie = false): string | undefined {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.slice(7).trim();
+  }
+  if (allowCookie) {
+    return parseSessionCookie(req);
   }
   return undefined;
 }
 
 function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
-  const token = extractToken(req);
+  const token = extractToken(req, false);
   const user = getSessionUser(token);
   if (!user) {
     res.status(401).json({ error: 'Authentication required. Please sign in.' });
@@ -296,9 +360,156 @@ function bootstrapFor(req: AuthenticatedRequest) {
   return getBootstrapData(req.user?.id);
 }
 
-// --- Auth Routes ---
+// --- Auth & First-Run Setup Routes ---
+
+app.get('/api/auth/status', (_req: Request, res: Response) => {
+  const needsFirstAdminSetup = !hasAnyNonMockAdminUser();
+  const developerMode = getWorkspaceSettingBoolean('developer_mode', false);
+  const loginTemplatesEnabled =
+    !needsFirstAdminSetup &&
+    developerMode &&
+    getWorkspaceSettingBoolean('login_templates_enabled', false);
+
+  let demoAccounts: DemoAccountSummary[] = [];
+  if (loginTemplatesEnabled) {
+    ensureDevDemoUsers();
+    const rows = db
+      .prepare(
+        `SELECT id, name, email, title, role, roles_json
+         FROM users
+         WHERE COALESCE(is_mock, 0) = 1
+         ORDER BY created_at ASC`
+      )
+      .all() as {
+      id: string;
+      name: string;
+      email: string;
+      title: string;
+      role: string;
+      roles_json: string;
+    }[];
+
+    demoAccounts = rows
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        title: row.title,
+        roles: normalizeRoles(row.roles_json, row.role),
+      }))
+      .filter((acc) => !acc.roles.includes('admin'));
+  }
+
+  res.json({
+    needsFirstAdminSetup,
+    loginTemplatesEnabled,
+    demoAccounts,
+  });
+});
+
+app.post('/api/auth/setup-admin', (req: Request, res: Response) => {
+  const { name, email, password, title } = req.body as {
+    name?: string;
+    email?: string;
+    password?: string;
+    title?: string;
+  };
+
+  const cleanName = (name ?? '').trim();
+  const cleanEmail = (email ?? '').trim().toLowerCase();
+  const cleanTitle = (title ?? '').trim() || 'Operations Administrator';
+
+  if (!cleanName || !cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    res.status(400).json({ error: 'Valid full name and email address are required.' });
+    return;
+  }
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: 'Administrator password must be at least 8 characters long.' });
+    return;
+  }
+
+  type BootstrapOutcome =
+    | { ok: true; token: string; user: User }
+    | { ok: false; status: number; error: string };
+
+  const runBootstrap = db.transaction((): BootstrapOutcome => {
+    if (hasAnyNonMockAdminUser()) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'Initial administrator account has already been configured. Please sign in.',
+      };
+    }
+
+    const existing = db.prepare(`SELECT id FROM users WHERE email = ?`).get(cleanEmail);
+    if (existing) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'An account with this email already exists.',
+      };
+    }
+
+    const userId = createId('usr');
+    const now = new Date().toISOString();
+    const roles: UserRole[] = ['admin', 'approver'];
+    db.prepare(
+      `INSERT INTO users (id, name, email, password_hash, role, roles_json, title, is_mock, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
+    ).run(
+      userId,
+      cleanName,
+      cleanEmail,
+      hashPassword(password),
+      'admin',
+      JSON.stringify(roles),
+      cleanTitle,
+      now
+    );
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
+    db.prepare(`INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`).run(
+      token,
+      userId,
+      now,
+      expiresAt
+    );
+
+    const userRow = db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as Record<string, unknown>;
+    return {
+      ok: true,
+      token,
+      user: mapUserRow(userRow),
+    };
+  });
+
+  const outcome = runBootstrap();
+  if (!outcome.ok) {
+    res.status(outcome.status).json({ error: outcome.error });
+    return;
+  }
+
+  setSessionCookie(req, res, outcome.token);
+  const log = logActivity(
+    outcome.user.name,
+    outcome.user.role,
+    'user:admin_bootstrap',
+    'Completed first-run initial Administrator setup.'
+  );
+  broadcastRealtime('state:sync', log.summary, log);
+
+  res.status(201).json({ token: outcome.token, user: outcome.user });
+});
 
 app.post('/api/auth/register', (req: Request, res: Response) => {
+  if (!hasAnyNonMockAdminUser()) {
+    res.status(403).json({
+      error: 'Initial Administrator setup must be completed before standard account registration is enabled.',
+    });
+    return;
+  }
+
   const { name, email, password, title } = req.body as {
     name?: string;
     email?: string;
@@ -342,6 +553,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
   const log = logActivity(user.name, user.role, 'user:registered', `Registered local User account.`);
   broadcastRealtime('state:sync', log.summary, log);
 
+  setSessionCookie(req, res, token);
   res.status(201).json({ token, user });
 });
 
@@ -371,18 +583,91 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     expiresAt
   );
 
+  setSessionCookie(req, res, token);
   res.json({ token, user: mapUserRow(userRow) });
+});
+
+app.post('/api/auth/dev-login', (req: Request, res: Response) => {
+  if (!hasAnyNonMockAdminUser()) {
+    res.status(403).json({ error: 'Initial Administrator setup must be completed first.' });
+    return;
+  }
+  const developerMode = getWorkspaceSettingBoolean('developer_mode', false);
+  const loginTemplatesEnabled = getWorkspaceSettingBoolean('login_templates_enabled', false);
+  if (!developerMode || !loginTemplatesEnabled) {
+    res.status(403).json({
+      error: 'Developer Mode non-admin quick-login is currently disabled by your Administrator.',
+    });
+    return;
+  }
+
+  const { userId } = req.body as { userId?: string };
+  const cleanUserId = (userId ?? '').trim();
+  if (!cleanUserId) {
+    res.status(400).json({ error: 'Demo account userId is required.' });
+    return;
+  }
+
+  ensureDevDemoUsers();
+  const userRow = db.prepare(`SELECT * FROM users WHERE id = ?`).get(cleanUserId) as
+    | Record<string, unknown>
+    | undefined;
+  if (!userRow) {
+    res.status(404).json({ error: 'Selected sandbox demo account was not found.' });
+    return;
+  }
+  if (Number(userRow.is_mock ?? 0) !== 1) {
+    res.status(403).json({ error: 'Only sandbox demo accounts may use quick-login.' });
+    return;
+  }
+  const roles = normalizeRoles(String(userRow.roles_json ?? '[]'), String(userRow.role ?? 'user'));
+  if (roles.includes('admin')) {
+    res.status(403).json({
+      error: 'Administrator accounts are excluded from quick-login templates for security.',
+    });
+    return;
+  }
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
+  db.prepare(`INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`).run(
+    token,
+    String(userRow.id),
+    now,
+    expiresAt
+  );
+
+  const user = mapUserRow(userRow);
+  const log = logActivity(
+    user.name,
+    user.role,
+    'user:dev_quick_login',
+    `Signed in via Developer Mode non-admin demo access.`
+  );
+  broadcastRealtime('state:sync', log.summary, log);
+
+  setSessionCookie(req, res, token);
+  res.json({ token, user });
 });
 
 app.post('/api/auth/logout', requireAuth, (req: AuthenticatedRequest, res: Response) => {
   if (req.sessionToken) {
     db.prepare(`DELETE FROM sessions WHERE token = ?`).run(req.sessionToken);
   }
+  clearSessionCookie(req, res);
   res.json({ ok: true });
 });
 
-app.get('/api/auth/me', requireAuth, (req: AuthenticatedRequest, res: Response) => {
-  res.json({ user: req.user });
+app.get('/api/auth/me', (req: Request, res: Response) => {
+  const token = extractToken(req, true);
+  const user = getSessionUser(token);
+  if (!user || !token) {
+    clearSessionCookie(req, res);
+    res.status(401).json({ error: 'Authentication required. Please sign in.' });
+    return;
+  }
+  res.json({ user, token });
 });
 
 function normalizeCycleType(value: unknown, fallback: CycleType = 'routine'): CycleType {
@@ -660,9 +945,52 @@ app.put(
     const { enabled } = req.body as { enabled?: boolean };
     const nextEnabled = Boolean(enabled);
     setWorkspaceSetting('developer_mode', nextEnabled);
+    if (!nextEnabled) {
+      setWorkspaceSetting('login_templates_enabled', false);
+      cleanupDevDemoUsersIfMockOff();
+    }
     const developerState = getDeveloperSettingsState();
     broadcastRealtime('state:sync');
     res.json({ developerState, bootstrap: bootstrapFor(req) });
+  }
+);
+
+app.put(
+  '/api/admin/developer-mode/login-templates',
+  requireAuth,
+  requireAdmin,
+  (req: AuthenticatedRequest, res: Response) => {
+    const { enabled } = req.body as { enabled?: boolean };
+    const nextEnabled = Boolean(enabled);
+
+    if (nextEnabled && !getWorkspaceSettingBoolean('developer_mode', false)) {
+      res.status(400).json({
+        error: 'Turn Developer Mode ON before enabling login-page demo access.',
+      });
+      return;
+    }
+
+    setWorkspaceSetting('login_templates_enabled', nextEnabled);
+    if (nextEnabled) {
+      ensureDevDemoUsers();
+    } else {
+      cleanupDevDemoUsersIfMockOff();
+    }
+
+    const log = logActivity(
+      req.user!.name,
+      req.user!.role,
+      'developer:login_templates_updated',
+      nextEnabled
+        ? 'Enabled Login Page Non-Admin Quick-Login templates in Developer Mode.'
+        : 'Disabled Login Page Non-Admin Quick-Login templates and revoked sandbox sessions.'
+    );
+    broadcastRealtime('state:sync', log.summary, log);
+
+    res.json({
+      developerState: getDeveloperSettingsState(),
+      bootstrap: bootstrapFor(req),
+    });
   }
 );
 
@@ -687,6 +1015,7 @@ app.post(
     } else {
       purgeMockData(req.user!.id);
       setWorkspaceSetting('mock_data_enabled', false);
+      setWorkspaceSetting('login_templates_enabled', false);
       const log = logActivity(
         req.user!.name,
         req.user!.role,
